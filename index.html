@@ -67,6 +67,56 @@
   .next .eta .sub{font-size:.82rem;opacity:.9;line-height:1.25;}
   .next .queue{margin-top:10px;font-size:.8rem;opacity:.9;}
 
+  /* ---- schedule (rest of day) ---- */
+  .sched{
+    margin:10px 14px 2px;border:1px solid var(--line);border-radius:14px;
+    background:var(--paper);overflow:hidden;
+  }
+  .sched-head{
+    display:flex;align-items:center;gap:10px;padding:12px 14px;
+    cursor:pointer;user-select:none;
+  }
+  .sched-head .lbl{
+    font-family:ui-monospace,monospace;font-size:.6rem;letter-spacing:.16em;
+    text-transform:uppercase;color:#7a6d56;font-weight:700;flex-shrink:0;
+  }
+  .sched-head .sum{flex:1;font-size:.78rem;color:#6b5d47;line-height:1.3;}
+  .sched-head .chev{flex-shrink:0;color:var(--line);font-size:.8rem;transition:transform .2s;}
+  .sched.open .sched-head .chev{transform:rotate(90deg);}
+  .sched-body{display:none;padding:0 12px 10px;}
+  .sched.open .sched-body{display:block;}
+
+  .srow{
+    display:flex;align-items:center;gap:11px;padding:9px 4px;
+    border-top:1px solid var(--dust);
+  }
+  .srow:first-child{border-top:none;}
+  .srow.her{background:var(--herd-soft);border-radius:9px;padding:9px 8px;border-top-color:transparent;}
+  .srow .scid{
+    font-family:ui-monospace,monospace;font-weight:700;font-size:.72rem;
+    background:var(--ink);color:var(--paper);border-radius:6px;
+    padding:4px 6px;min-width:40px;text-align:center;flex-shrink:0;
+  }
+  .srow.her .scid{background:var(--herd);}
+  .srow.live .scid{background:var(--live);}
+  .srow .smid{flex:1;min-width:0;}
+  .srow .sname{font-size:.9rem;font-weight:600;line-height:1.18;}
+  .srow.her .sname{color:var(--herd);}
+  .sbadge{
+    display:inline-block;background:var(--herd);color:#fff;border-radius:5px;
+    padding:1px 6px;font-family:ui-monospace,monospace;font-size:.58rem;font-weight:700;
+    letter-spacing:.03em;margin-left:6px;vertical-align:middle;
+  }
+  .srow .smeta{font-family:ui-monospace,monospace;font-size:.64rem;color:#7a6d56;margin-top:3px;}
+  .srow .stime{text-align:right;flex-shrink:0;}
+  .srow .stime .clk{font-family:ui-monospace,monospace;font-size:.86rem;font-weight:700;color:var(--brand-deep);}
+  .srow.live .stime .clk{color:var(--live);}
+  .srow .stime .eta{font-family:ui-monospace,monospace;font-size:.62rem;color:#9a8c72;margin-top:2px;}
+  .sgap{
+    padding:2px 6px 2px 51px;font-family:ui-monospace,monospace;
+    font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;color:#a2937a;
+  }
+
   /* ---- controls ---- */
   .controls{display:flex;gap:8px;margin:12px 14px 4px;}
   .controls button{
@@ -80,6 +130,23 @@
 
   .pacenote{margin:6px 16px 2px;font-size:.74rem;color:#6b5d47;line-height:1.4;}
   .pacenote b{color:var(--brand-deep);}
+
+  /* ---- calibration chip ---- */
+  .calib{
+    margin:8px 14px 2px;display:flex;align-items:center;gap:10px;
+    background:var(--herd-soft);border:1px solid #cfe0d5;border-radius:11px;padding:9px 11px;
+  }
+  .calib .msg{flex:1;font-size:.76rem;color:#33513f;line-height:1.35;}
+  .calib .msg b{color:var(--herd);}
+  .calib button{
+    flex-shrink:0;font-family:ui-monospace,monospace;font-size:.62rem;letter-spacing:.06em;
+    text-transform:uppercase;font-weight:700;cursor:pointer;
+    background:var(--herd);color:#fff;border:none;border-radius:9px;padding:8px 11px;
+  }
+  .calib button:active{transform:scale(.96);}
+  .calib.match{background:var(--dust);border-color:var(--line);}
+  .calib.match .msg{color:#6b5d47;}
+  .calib.match .msg b{color:var(--brand-deep);}
 
   /* ---- list ---- */
   .list{padding:8px 10px 40px;}
@@ -167,12 +234,16 @@
 
 <div id="nextcard"></div>
 
+<div id="schedule"></div>
+
 <div class="pacenote" id="pacenote"></div>
 
 <div class="controls">
   <button id="setMin">Per-ride: <b id="minLabel">2.5</b> min</button>
   <button id="setGap">Class gap: <b id="gapLabel">15</b> min</button>
 </div>
+
+<div id="calib"></div>
 
 <div class="list" id="list"></div>
 
@@ -438,6 +509,9 @@ let GAP_MIN = 15;         // minutes between classes (drag/settle/setup)
 const status = {};
 // per-run done flags: key `${classId}:${pos}` -> bool
 const runDone = {};
+// timestamp (ms) each run was marked done: key `${classId}:${pos}` -> epoch ms.
+// Used to measure the *actual* pace and calibrate the per-ride estimate.
+const runDoneAt = {};
 // which class index is currently "live" (only one at a time for timing anchor)
 let liveIdx = null;
 CLASSES.forEach((c,i)=>status[c.id]="upcoming");
@@ -445,7 +519,7 @@ CLASSES.forEach((c,i)=>status[c.id]="upcoming");
 function saveState(){
   try{
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      minPerRide:MIN_PER_RIDE, gapMin:GAP_MIN, status, runDone, liveIdx
+      minPerRide:MIN_PER_RIDE, gapMin:GAP_MIN, status, runDone, runDoneAt, liveIdx
     }));
   }catch(e){/* storage full or blocked — app still works for the session */}
 }
@@ -458,6 +532,7 @@ function loadState(){
     if(typeof s.gapMin==="number") GAP_MIN=s.gapMin;
     if(s.status) Object.keys(s.status).forEach(k=>{ if(k in status) status[k]=s.status[k]; });
     if(s.runDone) Object.keys(s.runDone).forEach(k=>{ runDone[k]=s.runDone[k]; });
+    if(s.runDoneAt) Object.keys(s.runDoneAt).forEach(k=>{ runDoneAt[k]=s.runDoneAt[k]; });
     liveIdx = (typeof s.liveIdx==="number") ? s.liveIdx : null;
   }catch(e){/* corrupt save — ignore and start fresh */}
 }
@@ -501,6 +576,72 @@ function estimateForHerRides(){
   return results;
 }
 
+/* Same timing walk, but one row per upcoming class (not just her rides).
+   Each row: start ETA/clock, its own run time, and the gap before it. */
+function estimateSchedule(){
+  const rows=[];
+  let anchorIdx = (liveIdx!=null) ? liveIdx : CLASSES.findIndex(c=>status[c.id]!=="done");
+  if(anchorIdx<0) return rows;
+
+  let cursorMin = 0;
+  for(let i=anchorIdx;i<CLASSES.length;i++){
+    const c=CLASSES[i];
+    if(status[c.id]==="done") continue;
+    const gapBefore = rows.length>0 ? GAP_MIN : 0; // gap before every class after the first
+    cursorMin += gapBefore;
+    const startMin = cursorMin;
+
+    let remaining=0;
+    c.draw.forEach(d=>{ if(!runDone[`${c.id}:${d[0]}`]) remaining++; });
+    const dur = remaining*MIN_PER_RIDE;
+    cursorMin += dur;
+
+    rows.push({
+      classId:c.id, className:c.name, startMin, gapBefore, dur, remaining,
+      hasHer:c.herIdx>=0, herPos: c.herIdx>=0 ? c.draw[c.herIdx][0] : null,
+      isAnchor:i===anchorIdx, isLive:status[c.id]==="live"
+    });
+  }
+  return rows;
+}
+
+/* ---------- CALIBRATION ----------
+   Measure the ACTUAL pace from the marks and compare to the current estimate.
+
+   The trick for being robust to lazy / batched marking: we do NOT look at the
+   gap between consecutive taps (that's noise — you might tick three runs at once,
+   or five minutes late). Instead we use only two things that stay reliable no
+   matter *when* you tap:
+     • the span from the first marked run to the last marked run, and
+     • the total COUNT of runs done in between.
+   Time-per-run = (that span − gap time for class changes) / (runs − 1).
+   Because it averages over the whole day, a few late taps barely move it.
+
+   Returns {perRun, runs, spanMin} or null when there isn't enough signal yet. */
+function measurePace(){
+  const times = Object.keys(runDoneAt)
+    .filter(k=>runDone[k])
+    .map(k=>({classId:k.split(":")[0], t:runDoneAt[k]}))
+    .filter(o=>typeof o.t==="number")
+    .sort((a,b)=>a.t-b.t);
+
+  if(times.length < 6) return null;                 // too few to trust
+  const spanMs = times[times.length-1].t - times[0].t;
+  const spanMin = spanMs/60000;
+  if(spanMin < 20) return null;                     // marked in one burst — no signal
+
+  // subtract one class-gap per class boundary the marks crossed
+  const classesTouched = new Set(times.map(o=>o.classId)).size;
+  const gapMin = Math.max(0, classesTouched-1) * GAP_MIN;
+
+  const rideMin = spanMin - gapMin;
+  const intervals = times.length - 1;
+  const perRun = rideMin / intervals;
+  if(perRun < 0.5 || perRun > 15) return null;      // implausible — ignore
+
+  return { perRun, runs: times.length, spanMin };
+}
+
 /* ---------- RENDER ---------- */
 const $ = s=>document.querySelector(s);
 
@@ -540,6 +681,64 @@ function renderNext(){
         "est. ride ~"+clockAt(n.etaMin)+"<br>if things run to pace"}</div>
     </div>
     ${rest.length?`<div class="queue">Then: ${rest.map(r=>`${r.classId} (~${fmtETA(r.etaMin)})`).join(" · ")}</div>`:""}
+  </div>`;
+}
+
+let scheduleOpen=false; // "rest of day" list collapsed by default
+function renderSchedule(){
+  const el=$("#schedule");
+  const rows=estimateSchedule();
+  // Only worth showing when there's at least one class after the current one.
+  if(rows.length<=1){ el.innerHTML=""; return; }
+
+  const last=rows[rows.length-1];
+  const endMin=last.startMin+last.dur;
+  const herLeft=rows.filter(r=>r.hasHer).length;
+
+  const body=rows.map((r,idx)=>{
+    const gap = idx>0 ? `<div class="sgap">↕ +${GAP_MIN} min between classes</div>` : "";
+    const etaTxt = r.startMin<=0 ? (r.isLive?"live now":"now") : "~"+fmtETA(r.startMin);
+    const runTxt = `${r.remaining} run${r.remaining!==1?"s":""} · ~${Math.round(r.dur)} min`;
+    return gap + `<div class="srow${r.hasHer?" her":""}${r.isLive?" live":""}">
+      <div class="scid">${r.classId}</div>
+      <div class="smid">
+        <div class="sname">${r.className}${r.hasHer?`<span class="sbadge">MICHI · #${r.herPos}</span>`:""}</div>
+        <div class="smeta">${runTxt}</div>
+      </div>
+      <div class="stime">
+        <div class="clk">${clockAt(r.startMin)}</div>
+        <div class="eta">${etaTxt}</div>
+      </div>
+    </div>`;
+  }).join("");
+
+  el.innerHTML=`<div class="sched${scheduleOpen?" open":""}">
+    <div class="sched-head" data-sched="1">
+      <span class="lbl">Rest of day</span>
+      <span class="sum">${rows.length} classes${herLeft?` · ${herLeft} for Michi`:""} · ends ~${clockAt(endMin)}</span>
+      <span class="chev">▶</span>
+    </div>
+    <div class="sched-body">${body}</div>
+  </div>`;
+}
+
+function renderCalib(){
+  const el=$("#calib");
+  const m=measurePace();
+  if(!m){ el.innerHTML=""; return; }          // not enough marks yet — stay quiet
+  const obs=Math.round(m.perRun*10)/10;        // one decimal
+  const diff=Math.abs(obs-MIN_PER_RIDE);
+  if(diff<0.3){
+    // reality agrees with the estimate — reassure, no action needed
+    el.innerHTML=`<div class="calib match">
+      <div class="msg">On pace: actual so far is <b>~${obs} min/run</b> over ${m.runs} runs — your ~${MIN_PER_RIDE} min estimate looks right.</div>
+    </div>`;
+    return;
+  }
+  const dir = obs>MIN_PER_RIDE ? "slower" : "faster";
+  el.innerHTML=`<div class="calib">
+    <div class="msg">Running <b>${dir}</b> than estimated: actual pace is <b>~${obs} min/run</b> over ${m.runs} runs (you're set to ${MIN_PER_RIDE}).</div>
+    <button data-calib="${obs}">Use ${obs}</button>
   </div>`;
 }
 
@@ -599,13 +798,22 @@ function renderList(){
   });
 }
 
-function renderAll(){ saveState(); renderNext(); renderPace(); renderList(); }
+function renderAll(){ saveState(); renderNext(); renderSchedule(); renderCalib(); renderPace(); renderList(); }
 
 /* ---------- EVENTS ---------- */
 document.addEventListener("click",e=>{
-  const t=e.target.closest("[data-toggle],[data-live],[data-done],[data-up],[data-run]");
+  const t=e.target.closest("[data-toggle],[data-live],[data-done],[data-up],[data-run],[data-sched],[data-calib]");
   if(!t) return;
 
+  if(t.hasAttribute("data-calib")){
+    const v=parseFloat(t.getAttribute("data-calib"));
+    if(!isNaN(v)) MIN_PER_RIDE=v;   // adopt the measured pace for future estimates
+    renderAll(); return;
+  }
+  if(t.hasAttribute("data-sched")){
+    scheduleOpen=!scheduleOpen;
+    renderSchedule(); return;
+  }
   if(t.hasAttribute("data-toggle")){
     const i=+t.getAttribute("data-toggle");
     CLASSES[i]._open=!CLASSES[i]._open;
@@ -614,6 +822,8 @@ document.addEventListener("click",e=>{
   if(t.hasAttribute("data-run")){
     const key=t.getAttribute("data-run");
     runDone[key]=!runDone[key];
+    // stamp when it was marked so we can measure actual pace; clear on un-mark
+    if(runDone[key]) runDoneAt[key]=Date.now(); else delete runDoneAt[key];
     renderAll(); return;
   }
   if(t.hasAttribute("data-live")){
@@ -643,7 +853,11 @@ document.addEventListener("click",e=>{
 
 $("#setMin").addEventListener("click",()=>{
   const opts=[1.5,2,2.5,3,3.5,4];
-  MIN_PER_RIDE=opts[(opts.indexOf(MIN_PER_RIDE)+1)%opts.length];
+  // if the value came from calibration it may sit off the preset steps —
+  // jump to the next preset above the current value, wrapping around
+  let i=opts.indexOf(MIN_PER_RIDE);
+  if(i<0) i=opts.findIndex(o=>o>MIN_PER_RIDE)-1; // so +1 below lands on that next step
+  MIN_PER_RIDE=opts[(i+1+opts.length)%opts.length];
   renderAll();
 });
 $("#setGap").addEventListener("click",()=>{
@@ -655,6 +869,7 @@ $("#reset").addEventListener("click",()=>{
   if(!confirm("Reset the whole day? This clears every Live/Done mark.")) return;
   CLASSES.forEach(c=>{status[c.id]="upcoming"; c._open=false;});
   Object.keys(runDone).forEach(k=>delete runDone[k]);
+  Object.keys(runDoneAt).forEach(k=>delete runDoneAt[k]);
   liveIdx=null;
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
   renderAll();
@@ -666,7 +881,7 @@ function tick(){
   let h=t.getHours(),m=t.getMinutes();
   const ap=h>=12?"pm":"am"; h=h%12||12;
   $("#hclock").textContent="· "+h+":"+String(m).padStart(2,"0")+ap;
-  renderNext(); // keep ETAs/clock times fresh
+  renderNext(); renderSchedule(); // keep ETAs/clock times fresh
 }
 setInterval(tick,30000);
 
