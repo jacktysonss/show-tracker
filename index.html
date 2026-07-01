@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1a1410">
+<title>Michi's Rides — Show Tracker</title>
+<style>
+  :root{
+    --ink:#1a1410;
+    --paper:#f5efe4;
+    --dust:#e8dfce;
+    --line:#c9bca3;
+    --brand:#7a4a28;       /* saddle leather */
+    --brand-deep:#5c3419;
+    --herd:#3f6d54;        /* sage green — the "her ride" highlight */
+    --herd-soft:#e2ede6;
+    --amber:#c78b32;
+    --done:#a89a82;
+    --live:#b8402c;
+    font-size:17px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html,body{background:var(--ink);}
+  body{
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    color:var(--ink);
+    max-width:560px;margin:0 auto;
+    background:var(--paper);
+    min-height:100dvh;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .util{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;}
+
+  /* ---- header ---- */
+  header{
+    position:sticky;top:0;z-index:20;
+    background:var(--ink);color:var(--paper);
+    padding:calc(env(safe-area-inset-top) + 14px) 18px 14px;
+    border-bottom:3px solid var(--brand);
+  }
+  .eyebrow{font-family:ui-monospace,monospace;font-size:.62rem;letter-spacing:.28em;
+    text-transform:uppercase;color:var(--amber);margin-bottom:4px;}
+  header h1{font-size:1.5rem;font-weight:600;letter-spacing:-.01em;line-height:1;}
+  header h1 small{font-size:.8rem;color:var(--line);font-weight:400;letter-spacing:0;}
+
+  /* ---- next-ride card ---- */
+  .next{
+    margin:16px 14px 6px;
+    background:var(--herd);color:#fff;
+    border-radius:16px;padding:18px 18px 16px;
+    box-shadow:0 6px 22px rgba(63,109,84,.32);
+    position:relative;overflow:hidden;
+  }
+  .next.none{background:#4a4136;box-shadow:none;}
+  .next .tag{font-family:ui-monospace,monospace;font-size:.6rem;letter-spacing:.24em;
+    text-transform:uppercase;opacity:.82;}
+  .next .cls{font-size:1.15rem;font-weight:600;margin-top:3px;line-height:1.15;}
+  .next .horse{font-size:1rem;margin-top:8px;opacity:.95;}
+  .next .horse b{font-weight:600;}
+  .next .eta{
+    margin-top:14px;display:flex;align-items:baseline;gap:10px;
+    border-top:1px solid rgba(255,255,255,.25);padding-top:12px;
+  }
+  .next .eta .big{font-family:ui-monospace,monospace;font-size:2.3rem;font-weight:600;
+    line-height:.9;letter-spacing:-.02em;}
+  .next .eta .sub{font-size:.82rem;opacity:.9;line-height:1.25;}
+  .next .queue{margin-top:10px;font-size:.8rem;opacity:.9;}
+
+  /* ---- controls ---- */
+  .controls{display:flex;gap:8px;margin:12px 14px 4px;}
+  .controls button{
+    flex:1;font-family:ui-monospace,monospace;font-size:.72rem;letter-spacing:.06em;
+    text-transform:uppercase;padding:11px 6px;border:1.5px solid var(--line);
+    background:var(--paper);color:var(--ink);border-radius:11px;font-weight:600;
+    cursor:pointer;transition:transform .08s;
+  }
+  .controls button:active{transform:scale(.96);}
+  .controls button.hot{background:var(--brand);color:#fff;border-color:var(--brand);}
+
+  .pacenote{margin:6px 16px 2px;font-size:.74rem;color:#6b5d47;line-height:1.4;}
+  .pacenote b{color:var(--brand-deep);}
+
+  /* ---- list ---- */
+  .list{padding:8px 10px 40px;}
+  .class{
+    background:var(--paper);border:1px solid var(--line);
+    border-radius:14px;margin:9px 4px;overflow:hidden;
+    transition:opacity .3s;
+  }
+  .class.done{opacity:.5;}
+  .class.live{border-color:var(--live);border-width:2px;box-shadow:0 3px 14px rgba(184,64,44,.18);}
+  .class.hasher{border-left:5px solid var(--herd);}
+
+  .chead{
+    display:flex;align-items:center;gap:11px;
+    padding:12px 14px;cursor:pointer;user-select:none;
+  }
+  .cid{
+    font-family:ui-monospace,monospace;font-weight:700;font-size:.78rem;
+    background:var(--ink);color:var(--paper);border-radius:7px;
+    padding:5px 7px;min-width:42px;text-align:center;flex-shrink:0;letter-spacing:.02em;
+  }
+  .class.live .cid{background:var(--live);}
+  .class.hasher .cid{background:var(--herd);}
+  .cmid{flex:1;min-width:0;}
+  .cname{font-size:.98rem;font-weight:600;line-height:1.15;}
+  .cmeta{font-family:ui-monospace,monospace;font-size:.68rem;color:#7a6d56;margin-top:3px;
+    display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
+  .badge{background:var(--herd-soft);color:var(--herd);border-radius:5px;
+    padding:1px 6px;font-weight:700;letter-spacing:.02em;}
+  .status{
+    font-family:ui-monospace,monospace;font-size:.6rem;letter-spacing:.14em;
+    text-transform:uppercase;padding:4px 8px;border-radius:20px;flex-shrink:0;
+    border:1px solid var(--line);color:#7a6d56;
+  }
+  .status.live{background:var(--live);color:#fff;border-color:var(--live);}
+  .status.done{background:var(--done);color:#fff;border-color:var(--done);}
+  .chev{flex-shrink:0;color:var(--line);font-size:.8rem;transition:transform .2s;}
+  .class.open .chev{transform:rotate(90deg);}
+
+  .cbody{display:none;padding:0 14px 12px 14px;}
+  .class.open .cbody{display:block;}
+  .draw{
+    display:flex;align-items:center;gap:10px;padding:8px 6px;
+    border-top:1px solid var(--dust);
+  }
+  .draw:first-child{border-top:1px solid var(--line);}
+  .draw .pos{font-family:ui-monospace,monospace;font-size:.72rem;color:#9a8c72;
+    min-width:22px;font-weight:600;}
+  .draw .dh{flex:1;font-size:.9rem;}
+  .draw .dh .rn{color:#8a7c63;font-size:.8rem;}
+  .draw.her{background:var(--herd-soft);border-radius:8px;margin:2px 0;
+    border-top-color:transparent;padding:9px 8px;}
+  .draw.her .dh{font-weight:700;color:var(--herd);}
+  .draw .mkdone{
+    font-family:ui-monospace,monospace;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;
+    border:1px solid var(--line);background:transparent;color:#8a7c63;border-radius:14px;
+    padding:5px 9px;cursor:pointer;flex-shrink:0;font-weight:600;
+  }
+  .draw .mkdone.on{background:var(--herd);color:#fff;border-color:var(--herd);}
+
+  .tapline{
+    padding:9px 6px 2px;text-align:center;font-family:ui-monospace,monospace;
+    font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:#a2937a;
+  }
+  .cbtns{display:flex;gap:8px;padding:10px 0 2px;}
+  .cbtns button{
+    flex:1;font-family:ui-monospace,monospace;font-size:.66rem;letter-spacing:.06em;
+    text-transform:uppercase;padding:10px;border-radius:10px;font-weight:700;cursor:pointer;
+    border:1.5px solid var(--line);background:var(--paper);color:var(--ink);
+  }
+  .cbtns button.live{background:var(--live);color:#fff;border-color:var(--live);}
+  .cbtns button.done{background:var(--done);color:#fff;border-color:var(--done);}
+
+  footer{padding:18px 20px 40px;color:#8a7c63;font-size:.72rem;line-height:1.5;text-align:center;}
+  .reset{margin-top:10px;background:none;border:1px solid var(--line);color:#8a7c63;
+    font-family:ui-monospace,monospace;font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;
+    padding:8px 14px;border-radius:20px;cursor:pointer;}
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">Ride Tracker · Michi Tyson</div>
+  <h1>Up Next <small id="hclock"></small></h1>
+</header>
+
+<div id="nextcard"></div>
+
+<div class="pacenote" id="pacenote"></div>
+
+<div class="controls">
+  <button id="setMin">Per-ride: <b id="minLabel">2.5</b> min</button>
+  <button id="setGap">Class gap: <b id="gapLabel">15</b> min</button>
+</div>
+
+<div class="list" id="list"></div>
+
+<footer>
+  Tap a class to mark it <b>Live</b> or <b>Done</b>, or tick off individual runs as they finish.
+  Timing is an estimate — it recalculates from whatever is currently marked live.
+  <br>
+  <button class="reset" id="reset">Reset the day</button>
+</footer>
+
+<script>
+/* ---------- DATA: classes in running order ----------
+   Each class: id (program number), name, and draw list [pos, horseNo, horse, rider]
+   "her" flag computed from rider name match (Michi / Mitchi Tyson).
+------------------------------------------------------ */
+const RIDER_RE = /^(michi|mitchi)\s+tyson$/i;
+
+const CLASSES = [
+  {id:"C1", name:"Non Pro Hackamore Classic Herd Work", draw:[
+    [1,"124","Covid Cat","Jordyn Bentley"],
+    [2,"155","Justa Dream Beliver","Kaleigh Towner"],
+    [3,"161","Lil Joe Flash","Peter Gould"],
+    [4,"146","Hogans Nic N Spark","Jennifer Duff"],
+    [5,"157","Lady Like Reno","Mitchi Tyson"],
+    [6,"114","Caramello Cat","Dan Steers"],
+    [7,"560","Chase McRae","Cassie Harrison"],
+    [8,"163","Loaded Smoke N Mirrors","Patrick Hopgood"],
+  ]},
+  {id:"C2", name:"Open / Non Pro Bridled Spectacular Herd Work", draw:[
+    [1,"168","Metallic Desires","Kate Kirk"],
+    [2,"101","A Shinin Texas Time","Dan Steers"],
+    [3,"200","Shiny Kitty","Neil Green"],
+    [4,"232","Whiskey N Beer","Sandra Buckingham"],
+    [5,"132","Dunitallkindachic","Dan Steers"],
+  ]},
+  {id:"V32", name:"All Age Open Ranch Cutting", draw:[
+    [1,"252","Roosters Little Catory","Glenn Wyse"],
+    [2,"124","Covid Cat","Jordyn Bentley"],
+    [3,"145","Hissy Fit","Garrett Newton"],
+    [4,"101","A Shinin Texas Time","Dan Steers"],
+    [5,"162","Llamame Mitch","Neil Green"],
+    [6,"232","Whiskey N Beer","Sandra Buckingham"],
+    [7,"217","Swipe Right","Dan Steers"],
+    [8,"170","Just Maid Hard","Michelle Garratt"],
+    [9,"181","QXH Perfect Harmony","Stephen Kelly"],
+    [10,"127","Dee Bar Blue Lena","Garret Newton"],
+    [11,"241","Yulgibar Do It Like Roy","Glenn Wyse"],
+    [12,"114","Caramello Cat","Dan Steers"],
+    [13,"250","Valdemar Under The Influence","Sage Davison"],
+  ]},
+  {id:"V33", name:"All Age Youth Ranch Cutting", draw:[
+    [1,"—","Salhaven Top Cat","B. Smith"],
+  ]},
+  {id:"V34", name:"Heritage Snaffle Bit Ranch Cutting", draw:[
+    [1,"235","Wundurra Magicman","Cora Potter"],
+    [2,"112","Bobs Dandy Rio","Simone Wood"],
+    [3,"147","Hollywood Ruf Chex","Michelle Ninness"],
+    [4,"560","Chase McRae","Cassie Harrison"],
+    [5,"103","Absulootly A Playboy","Sandra Buckingham"],
+    [6,"129","Do Me A Favour","Bridget Connelly"],
+    [7,"110","Blue Mtn Impress Me More","Naomi Lee"],
+    [8,"191","Roys Niner","Bridgette Connelly"],
+    [9,"119","Chisums Little Freckle","Pia Steers"],
+    [10,"120","Classic's Queen","Catherine Jefferis"],
+    [11,"173","Nightcliff Rey Spencer","Pamela Andrew"],
+    [12,"190","Quivering Cat","Jaz Everitt"],
+  ]},
+  {id:"V35", name:"All Age Amateur Ranch Cutting", draw:[
+    [1,"241","Yulgibar Do It Like Roy","Sue Wyse"],
+    [2,"132","Dunitallkindachic","Angel Marsh"],
+    [3,"209","Spins Silver Reyvolver","Alma Morgan"],
+    [4,"232","Whiskey N Beer","Sandra Buckingham"],
+    [5,"116","Catsasmartlilmitch","Neil Green"],
+    [6,"187","Rhondhu Crackin Ma Cat","Jody Wellington"],
+    [7,"127","Dee Bar Blue Lena","Brook Newton"],
+    [8,"217","Swipe Right","Pia Steers"],
+    [9,"181","QXH Perfect Harmony","Stephen Kelly"],
+    [10,"172","Ms Inferno Whiz","Andrew Fay"],
+    [11,"250","Valdemar Under The Influence","Sage Davison"],
+    [12,"223","TJT Tassa N Genes","Nicole George"],
+  ]},
+  {id:"V36", name:"Inter. Horse Ranch Cutting", draw:[
+    [1,"459","Believen Mecom","Tracy Ralph"],
+    [2,"186","Reo Park Freckles Kitty","Sage Davison"],
+    [3,"166","MC Watch Me Win","Patrick Hopgood"],
+    [4,"171","Miss Hollywood Pinup","Alex Harding"],
+    [5,"190","Quivering Cat","Jaz Everitt"],
+    [6,"201","Short Drive","Sacha Dudley"],
+    [7,"208","Spin Z Metal","Patrick Hopgood"],
+    [8,"182","QXH Tigers Chocolatkiss","Cora Potter"],
+    [9,"111","Blue Smokin Guns","Genine Jackson"],
+    [10,"134","Erin Felix Too","Simone Holt"],
+    [11,"145","Hissy Fit","Garrett Newton"],
+    [12,"205","Smooth Mooves","Patrick Hopgood"],
+    [13,"214","Stepping In Ashes","Matthew Clifford"],
+    [14,"148","Holy Blue","Donna Buchanan"],
+  ]},
+  {id:"V37", name:"Inter. Rider Ranch Cutting", draw:[
+    [1,"199","Shine For Nic","Jennifer Duff"],
+    [2,"201","Short Drive","Sacha Dudley"],
+    [3,"156","La Summer Touch","Alissa Balderston"],
+    [4,"159","Lil Hollywood Chex","Susan Laws"],
+    [5,"118","Chex For Guns","Jules Beveridge"],
+    [6,"216","Sure To Be Playful","Kalani Rogers"],
+    [7,"167","Metallic Condor","Stephen Pyman"],
+    [8,"138","Get N Bucks","Tracey Forrest"],
+    [9,"232","Jimbo","Roy Wright"],
+    [10,"127","Dee Bar Blue Lena","Brooke Newton"],
+    [11,"112","Bobs Dandy Rio","Simone Wood"],
+    [12,"459","Believen Mecom","Tracy Ralph"],
+    [13,"185","Remember Chisum","Chris Pretorius"],
+    [14,"219","Talken Boonsmal","Donna Buchanan"],
+    [15,"196","Senors Dynasty","Mick McGhee"],
+    [16,"134","Erin Felix Too","Simone Holt"],
+    [17,"171","Miss Hollywood Pinup","Morgan Harding"],
+  ]},
+  {id:"V38", name:"Inter. Youth Ranch Cutting", draw:[
+    [1,"222","TJT Lil Gunner","Indy Jacob"],
+    [2,"217","Swipe Right","Zara Steers"],
+    [3,"227","TN Metallic Belle Rey","Hunter Trousdell"],
+  ]},
+  {id:"V39", name:"Green Horse Ranch Cutting", draw:[
+    [1,"135","FP Dragonfly","Kristina Jensen"],
+    [2,"211","Springtime Blossom","Deb McGhee"],
+    [3,"234","Willows Treasure","Michi Tyson"],
+    [4,"218","Sympathy For The Devil","Jennifer Thake"],
+    [5,"117","Check This Out","Jolene King"],
+    [6,"223","TJT Tassa N Genes","Nicole George"],
+    [7,"231","Voodoo Melody","Adrienne Thomson"],
+    [8,"189","RKB Divas N Diamonds","Mack Jackson"],
+    [9,"161","Lil Joe Flash","Peter Gould"],
+    [10,"139","Givem Double Hell","Stephen Kelly"],
+  ]},
+  {id:"V40", name:"All Age Open Ranch Boxing", draw:[
+    [1,"107","Bear Whiz Me","Tania Powell"],
+    [2,"114","Caramello Cat","Dan Steers"],
+    [3,"187","Rhondhu Crackin Ma Cat","Jody Wellington"],
+    [4,"122","Cookie","Wayne Brokenbrough"],
+    [5,"241","Yulgibar Do It Like Roy","Glenn Wyse"],
+    [6,"132","Dunitallkindachic","Angel Marsh"],
+    [7,"170","Just Maid Hard","Michelle Garratt"],
+    [8,"157","Lady Like Reno","Michi Tyson"],
+    [9,"252","Roosters Little Catory","Glenn Wyse"],
+    [10,"181","QXH Perfect Harmony","Stephen Kelly"],
+    [11,"101","A Shinin Texas Time","Dan Steers"],
+    [12,"232","Whiskey N Beer","Sandra Buckingham"],
+  ]},
+  {id:"V41", name:"All Age Youth Ranch Boxing", draw:[
+    [1,"123","Corprate Zippo","Zahra Vandenberg"],
+  ]},
+  {id:"V42", name:"Heritage Snaffle Bit Ranch Boxing", draw:[
+    [1,"120","Classic's Queen","Catherine Jefferis"],
+    [2,"191","Roys Niner","Bridget Connelly"],
+    [3,"235","Wundurra Magicman","Cora Potter"],
+    [4,"103","Absulootly A Playboy","Sandra Buckingham"],
+    [5,"119","Chisums Little Freckle","Pia Steers"],
+    [6,"129","Do Me A Favour","Bridget Connelly"],
+    [7,"173","Nightcliff Rey Spencer","Pamela Andrew"],
+    [8,"112","Bobs Dandy Rio","Simone Wood"],
+  ]},
+  {id:"V43", name:"All Age Amateur Ranch Boxing", draw:[
+    [1,"217","Swipe Right","Pia Steers"],
+    [2,"181","QXH Perfect Harmony","Stephen Kelly"],
+    [3,"232","Whiskey N Beer","Sandra Buckingham"],
+    [4,"250","Valdemar Under The Influence","Sage Davison"],
+    [5,"187","Rhondhu Crackin Ma Cat","Jody Wellington"],
+    [6,"223","TJT Tassa N Genes","Nicole George"],
+    [7,"172","Ms Inferno Whiz","Andrew Fay"],
+    [8,"132","Dunitallkindachic","Angel Marsh"],
+    [9,"127","Dee Bar Blue Lena","Brooke Newton"],
+    [10,"241","Yulgibar Do It Like Roy","Sue Wyse"],
+    [11,"209","Spins Silver Reyvolver","Alma Morgan"],
+  ]},
+  {id:"V44", name:"Inter. Horse Ranch Boxing", draw:[
+    [1,"240","Valdemar Radically Sweet","Jodie Potter"],
+    [2,"190","Quivering Cat","Jaz Everitt"],
+    [3,"182","QXH Tigers Chocolatkiss","Cora Potter"],
+    [4,"204","Sizzlin Blue Cat","Susan Croser"],
+    [5,"186","Reo Park Freckles Kitty","Sage Davison"],
+    [6,"230","Valdemar Code Of Conduct","Jodie Potter"],
+    [7,"148","Holy Blue","Donna Buchanan"],
+    [8,"134","Erin Felix Too","Simone Holt"],
+    [9,"111","Blue Smokin Guns","Genine Jackson"],
+  ]},
+  {id:"V45", name:"Inter. Rider Ranch Boxing", draw:[
+    [1,"138","Get N Bucks","Tracey Forrest"],
+    [2,"177","Proud Lil Bo Duke","Adrienne Ley"],
+    [3,"219","Talken Boonsmal","Donna Buchanan"],
+    [4,"180","Nevadas Smoking Gun","Kyla Fay"],
+    [5,"570","CPH Chex Out My Brass","Angel Marsh"],
+    [6,"459","Believen Mecom","Tracy Ralph"],
+    [7,"221","Tis Electric","Nikki Hopgood"],
+    [8,"159","Lil Hollywood Chex","Susan Laws"],
+    [9,"167","Metallic Condor","Stephen Pyman"],
+    [10,"216","Sure To Be Playful","Kalani Rogers"],
+    [11,"232","Jimbo","Roy Wright"],
+    [12,"185","Remember Chisum","Chris Pretorius"],
+    [13,"206","Sonitas Man O War","Val Tanner"],
+    [14,"118","Chex For Guns","Jules Beveridge"],
+    [15,"134","Erin Felix Too","Simone Holt"],
+    [16,"156","La Summer Touch","Alissa Balderston"],
+    [17,"127","Dee Bar Blue Lena","Brooke Newton"],
+  ]},
+  {id:"V46", name:"Inter. Youth Ranch Boxing", draw:[
+    [1,"222","TJT Lil Gunner","Indy Jacob"],
+    [2,"217","Swipe Right","Zara Steers"],
+    [3,"227","TN Metallic Belle Rey","Hunter Trousdell"],
+  ]},
+  {id:"V47", name:"Green Horse Ranch Boxing", draw:[
+    [1,"231","Voodoo Melody","Adrienne Thomson"],
+    [2,"189","RKB Divas N Diamonds","Mack Jackson"],
+    [3,"117","Check This Out","Jolene King"],
+    [4,"218","Sympathy For The Devil","Jennifer Thake"],
+    [5,"161","Lil Joe Flash","Peter Gould"],
+    [6,"139","Givem Double Hell","Stephen Kelly"],
+    [7,"206","Sonitas Man O War","Val Tanner"],
+    [8,"164","Marshall","Riley Bruggemann"],
+    [9,"211","Springtime Blossom","Deb McGhee"],
+    [10,"135","FP Dragonfly","Kristina Jensen"],
+    [11,"223","TJT Tassa N Genes","Nicole George"],
+    [12,"234","Willows Treasure","Michi Tyson"],
+  ]},
+  {id:"V52", name:"Inter. Rider Limited Ranch Cow Work", draw:[
+    [4,"199","Shine For Nic","Jennifer Duff"],
+    [5,"159","Lil Hollywood Chex","Susan Laws"],
+    [6,"134","Erin Felix Too","Simone Holt"],
+    [7,"232","Jimbo","Roy Wright"],
+  ], partial:true},
+  {id:"V53", name:"Inter. Youth Limited Ranch Cow Work", draw:[
+    [1,"227","TN Metallic Belle Rey","Hunter Trousdell"],
+  ]},
+  {id:"V54", name:"Green Horse Limited Ranch Cow Work", draw:[
+    [1,"164","Marshall","Riley Bruggemann"],
+    [2,"223","TJT Tassa N Genes","Nicole George"],
+    [3,"139","Givem Double Hell","Stephen Kelly"],
+    [4,"117","Check This Out","Jolene King"],
+    [5,"161","Lil Joe Flash","Peter Gould"],
+    [6,"211","Springtime Blossom","Deb McGhee"],
+    [7,"218","Sympathy For The Devil","Jennifer Thake"],
+    [8,"234","Willows Treasure","Michi Tyson"],
+    [9,"135","FP Dragonfly","Kristina Jensen"],
+  ]},
+  {id:"V55", name:"All Age Open Ranch Cow Work", draw:[
+    [1,"124","Covid Cat","Jordyn Bentley"],
+    [2,"200","Shiny Kitty","Neil Green"],
+    [3,"181","QXH Perfect Harmony","Stephen Kelly"],
+    [4,"252","Roosters Little Catory","Glenn Wyse"],
+    [5,"122","Cookie","Wayne Brokenbrough"],
+    [6,"232","Whiskey N Beer","Sandra Buckingham"],
+  ]},
+];
+
+/* mark "her" rides */
+CLASSES.forEach(c=>{
+  c.herIdx = c.draw.findIndex(d=>RIDER_RE.test(d[3].trim()));
+});
+
+/* ---------- STATE (saved to this device so it survives reloads) ---------- */
+const SAVE_KEY = "michiTracker.v1";
+let MIN_PER_RIDE = 3.5;   // minutes per run inside a class
+let GAP_MIN = 15;         // minutes between classes (drag/settle/setup)
+// status per class: "upcoming" | "live" | "done"
+const status = {};
+// per-run done flags: key `${classId}:${pos}` -> bool
+const runDone = {};
+// which class index is currently "live" (only one at a time for timing anchor)
+let liveIdx = null;
+CLASSES.forEach((c,i)=>status[c.id]="upcoming");
+
+function saveState(){
+  try{
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      minPerRide:MIN_PER_RIDE, gapMin:GAP_MIN, status, runDone, liveIdx
+    }));
+  }catch(e){/* storage full or blocked — app still works for the session */}
+}
+function loadState(){
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);
+    if(!raw) return;
+    const s=JSON.parse(raw);
+    if(typeof s.minPerRide==="number") MIN_PER_RIDE=s.minPerRide;
+    if(typeof s.gapMin==="number") GAP_MIN=s.gapMin;
+    if(s.status) Object.keys(s.status).forEach(k=>{ if(k in status) status[k]=s.status[k]; });
+    if(s.runDone) Object.keys(s.runDone).forEach(k=>{ runDone[k]=s.runDone[k]; });
+    liveIdx = (typeof s.liveIdx==="number") ? s.liveIdx : null;
+  }catch(e){/* corrupt save — ignore and start fresh */}
+}
+loadState();
+
+/* ---------- TIMING MODEL ----------
+   Anchor = the live class (if any) starting "now"; otherwise the first upcoming
+   class starts "now". We walk forward summing ride time + gaps, subtracting
+   runs already ticked done in the live class.
+------------------------------------------------------------------- */
+function estimateForHerRides(){
+  // returns array of {classId, className, horse, pos, etaMin, isLiveNow}
+  const results=[];
+  let anchorIdx = (liveIdx!=null) ? liveIdx : CLASSES.findIndex(c=>status[c.id]!=="done");
+  if(anchorIdx<0) return results;
+
+  let cursorMin = 0; // minutes from now
+  for(let i=anchorIdx;i<CLASSES.length;i++){
+    const c=CLASSES[i];
+    if(status[c.id]==="done") continue;
+    // add class gap before non-anchor classes
+    if(i!==anchorIdx) cursorMin += GAP_MIN;
+
+    // runs within class
+    for(let r=0;r<c.draw.length;r++){
+      const d=c.draw[r];
+      const key=`${c.id}:${d[0]}`;
+      const already = runDone[key];
+      // eta at the START of this run
+      const etaThis = cursorMin;
+      if(!already){ cursorMin += MIN_PER_RIDE; }
+      if(r===c.herIdx && !already){
+        results.push({
+          classId:c.id, className:c.name, horse:`${d[1]==="—"?"":d[1]+" "}${d[2]}`,
+          pos:d[0], etaMin:Math.max(0,Math.round(etaThis)),
+          isLiveNow:(i===anchorIdx && status[c.id]==="live")
+        });
+      }
+    }
+  }
+  return results;
+}
+
+/* ---------- RENDER ---------- */
+const $ = s=>document.querySelector(s);
+
+function fmtETA(min){
+  if(min<=0) return "now";
+  if(min<60) return min+"m";
+  const h=Math.floor(min/60), m=min%60;
+  return h+"h"+(m?" "+m+"m":"");
+}
+function clockAt(min){
+  const t=new Date(Date.now()+min*60000);
+  let h=t.getHours(), m=t.getMinutes();
+  const ap=h>=12?"pm":"am"; h=h%12||12;
+  return h+":"+String(m).padStart(2,"0")+ap;
+}
+
+function renderNext(){
+  const her=estimateForHerRides();
+  const card=$("#nextcard");
+  if(her.length===0){
+    card.innerHTML=`<div class="next none">
+      <div class="tag">All done</div>
+      <div class="cls">No more rides for Michi today 🎉</div>
+      <div class="queue">Mark classes back to upcoming if you're testing.</div>
+    </div>`;
+    return;
+  }
+  const n=her[0];
+  const rest=her.slice(1);
+  card.innerHTML=`<div class="next">
+    <div class="tag">${n.isLiveNow?"Riding area · in this class now":"Next ride · "+n.classId}</div>
+    <div class="cls">${n.classId} — ${n.className}</div>
+    <div class="horse"><b>#${n.pos} in the draw</b> · ${n.horse}</div>
+    <div class="eta">
+      <div class="big util">${n.isLiveNow?"SOON":"~"+fmtETA(n.etaMin)}</div>
+      <div class="sub">${n.isLiveNow?"She's in the current class — watch the draw order":
+        "est. ride ~"+clockAt(n.etaMin)+"<br>if things run to pace"}</div>
+    </div>
+    ${rest.length?`<div class="queue">Then: ${rest.map(r=>`${r.classId} (~${fmtETA(r.etaMin)})`).join(" · ")}</div>`:""}
+  </div>`;
+}
+
+function renderPace(){
+  $("#pacenote").innerHTML =
+    `Assuming <b>~${MIN_PER_RIDE} min</b> per run and <b>~${GAP_MIN} min</b> between classes `+
+    `(herd settle · arena drag · setup). Tap a class <b>Live</b> when it actually starts to re-anchor the clock.`;
+  $("#minLabel").textContent=MIN_PER_RIDE;
+  $("#gapLabel").textContent=GAP_MIN;
+}
+
+function renderList(){
+  const list=$("#list"); list.innerHTML="";
+  CLASSES.forEach((c,i)=>{
+    const st=status[c.id];
+    const isLive=st==="live", isDone=st==="done";
+    const hasHer=c.herIdx>=0;
+    const el=document.createElement("div");
+    el.className="class"+(isLive?" live":"")+(isDone?" done":"")+(hasHer?" hasher":"");
+    if(c._open) el.classList.add("open");
+
+    const runs=c.draw.length;
+    const herHorse = hasHer? c.draw[c.herIdx][2] : null;
+
+    el.innerHTML=`
+      <div class="chead" data-toggle="${i}">
+        <div class="cid">${c.id}</div>
+        <div class="cmid">
+          <div class="cname">${c.name}</div>
+          <div class="cmeta">
+            <span>${runs} run${runs>1?"s":""}${c.partial?" (from #"+c.draw[0][0]+")":""}</span>
+            ${hasHer?`<span class="badge">MICHI · #${c.draw[c.herIdx][0]}</span>`:""}
+            ${hasHer?`<span>${herHorse}</span>`:""}
+          </div>
+        </div>
+        ${isLive?'<span class="status live">Live</span>':isDone?'<span class="status done">Done</span>':'<span class="status">Upcoming</span>'}
+        <span class="chev">▶</span>
+      </div>
+      <div class="cbody">
+        ${c.draw.map(d=>{
+          const her=RIDER_RE.test(d[3].trim());
+          const key=`${c.id}:${d[0]}`;
+          const done=!!runDone[key];
+          return `<div class="draw ${her?"her":""}">
+            <span class="pos">${d[0]}</span>
+            <span class="dh">${d[1]==="—"?"":d[1]+" "}${d[2]} <span class="rn">· ${d[3]}</span></span>
+            <button class="mkdone ${done?"on":""}" data-run="${key}">${done?"✓ ran":"ran"}</button>
+          </div>`;
+        }).join("")}
+        <div class="cbtns">
+          <button class="live" data-live="${i}">${isLive?"● Live now":"Set Live"}</button>
+          <button class="done" data-done="${i}">${isDone?"✓ Done":"Mark Done"}</button>
+          <button data-up="${i}">Upcoming</button>
+        </div>
+      </div>`;
+    list.appendChild(el);
+  });
+}
+
+function renderAll(){ saveState(); renderNext(); renderPace(); renderList(); }
+
+/* ---------- EVENTS ---------- */
+document.addEventListener("click",e=>{
+  const t=e.target.closest("[data-toggle],[data-live],[data-done],[data-up],[data-run]");
+  if(!t) return;
+
+  if(t.hasAttribute("data-toggle")){
+    const i=+t.getAttribute("data-toggle");
+    CLASSES[i]._open=!CLASSES[i]._open;
+    renderList(); return;
+  }
+  if(t.hasAttribute("data-run")){
+    const key=t.getAttribute("data-run");
+    runDone[key]=!runDone[key];
+    renderAll(); return;
+  }
+  if(t.hasAttribute("data-live")){
+    const i=+t.getAttribute("data-live");
+    if(status[CLASSES[i].id]==="live"){ status[CLASSES[i].id]="upcoming"; liveIdx=null; }
+    else {
+      // mark all earlier classes done, this one live
+      CLASSES.forEach((c,j)=>{ if(j<i) status[c.id]="done"; });
+      status[CLASSES[i].id]="live"; liveIdx=i;
+    }
+    CLASSES[i]._open=true;
+    renderAll(); return;
+  }
+  if(t.hasAttribute("data-done")){
+    const i=+t.getAttribute("data-done");
+    status[CLASSES[i].id]="done";
+    if(liveIdx===i) liveIdx=null;
+    renderAll(); return;
+  }
+  if(t.hasAttribute("data-up")){
+    const i=+t.getAttribute("data-up");
+    status[CLASSES[i].id]="upcoming";
+    if(liveIdx===i) liveIdx=null;
+    renderAll(); return;
+  }
+});
+
+$("#setMin").addEventListener("click",()=>{
+  const opts=[1.5,2,2.5,3,3.5,4];
+  MIN_PER_RIDE=opts[(opts.indexOf(MIN_PER_RIDE)+1)%opts.length];
+  renderAll();
+});
+$("#setGap").addEventListener("click",()=>{
+  const opts=[5,10,15,20,30];
+  GAP_MIN=opts[(opts.indexOf(GAP_MIN)+1)%opts.length];
+  renderAll();
+});
+$("#reset").addEventListener("click",()=>{
+  if(!confirm("Reset the whole day? This clears every Live/Done mark.")) return;
+  CLASSES.forEach(c=>{status[c.id]="upcoming"; c._open=false;});
+  Object.keys(runDone).forEach(k=>delete runDone[k]);
+  liveIdx=null;
+  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  renderAll();
+});
+
+/* live clock in header */
+function tick(){
+  const t=new Date();
+  let h=t.getHours(),m=t.getMinutes();
+  const ap=h>=12?"pm":"am"; h=h%12||12;
+  $("#hclock").textContent="· "+h+":"+String(m).padStart(2,"0")+ap;
+  renderNext(); // keep ETAs/clock times fresh
+}
+setInterval(tick,30000);
+
+renderAll(); tick();
+</script>
+</body>
+</html>
