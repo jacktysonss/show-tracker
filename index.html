@@ -200,12 +200,18 @@
   .draw.her{background:var(--herd-soft);border-radius:8px;margin:2px 0;
     border-top-color:transparent;padding:9px 8px;}
   .draw.her .dh{font-weight:700;color:var(--herd);}
-  .draw .mkdone{
+  .draw .mkdone,.draw .mkscr{
     font-family:ui-monospace,monospace;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;
     border:1px solid var(--line);background:transparent;color:#8a7c63;border-radius:14px;
     padding:5px 9px;cursor:pointer;flex-shrink:0;font-weight:600;
   }
   .draw .mkdone.on{background:var(--herd);color:#fff;border-color:var(--herd);}
+  .draw .mkdone[disabled]{opacity:.35;cursor:default;}
+  .draw .mkscr.on{background:var(--live);color:#fff;border-color:var(--live);}
+  /* scratched run: struck through and dimmed, no longer counts */
+  .draw.scr .dh{text-decoration:line-through;color:#a2937a;}
+  .draw.scr .pos{text-decoration:line-through;}
+  .draw.scr{opacity:.7;}
 
   .tapline{
     padding:9px 6px 2px;text-align:center;font-family:ui-monospace,monospace;
@@ -532,6 +538,9 @@ const runDone = {};
 // timestamp (ms) each run was marked done: key `${classId}:${pos}` -> epoch ms.
 // Used to measure the *actual* pace and calibrate the per-ride estimate.
 const runDoneAt = {};
+// scratched runs (horse pulled, won't ride): key `${classId}:${pos}` -> bool.
+// Excluded from timing entirely — neither counted as a run to come nor as one ridden.
+const runScratch = {};
 // which class index is currently "live" (only one at a time for timing anchor)
 let liveIdx = null;
 CLASSES.forEach((c,i)=>status[c.id]="upcoming");
@@ -542,7 +551,7 @@ function saveState(){
       // paceByType is the new source of truth; minPerRide is kept in sync with
       // the cutting rate so an older app version can still read this save.
       paceByType, minPerRide:paceByType.cutting,
-      gapMin:GAP_MIN, status, runDone, runDoneAt, liveIdx
+      gapMin:GAP_MIN, status, runDone, runDoneAt, runScratch, liveIdx
     }));
   }catch(e){/* storage full or blocked — app still works for the session */}
 }
@@ -564,6 +573,7 @@ function loadState(){
     if(s.status) Object.keys(s.status).forEach(k=>{ if(k in status) status[k]=s.status[k]; });
     if(s.runDone) Object.keys(s.runDone).forEach(k=>{ runDone[k]=s.runDone[k]; });
     if(s.runDoneAt) Object.keys(s.runDoneAt).forEach(k=>{ runDoneAt[k]=s.runDoneAt[k]; });
+    if(s.runScratch) Object.keys(s.runScratch).forEach(k=>{ runScratch[k]=s.runScratch[k]; });
     liveIdx = (typeof s.liveIdx==="number") ? s.liveIdx : null;
   }catch(e){/* corrupt save — ignore and start fresh */}
 }
@@ -592,13 +602,14 @@ function estimateForHerRides(){
       const d=c.draw[r];
       const key=`${c.id}:${d[0]}`;
       const already = runDone[key];
+      const scratched = runScratch[key];
       // eta at the START of this run
       const etaThis = cursorMin;
-      if(!already){ cursorMin += paceOf(c); }
-      if(r===c.herIdx && !already){
-        // how many runs before her in this class are still to go
+      if(!already && !scratched){ cursorMin += paceOf(c); } // scratched runs take no time
+      if(r===c.herIdx && !already && !scratched){
+        // how many runs before her in this class are still to go (skip scratched)
         let ahead=0;
-        for(let x=0;x<c.herIdx;x++){ if(!runDone[`${c.id}:${c.draw[x][0]}`]) ahead++; }
+        for(let x=0;x<c.herIdx;x++){ const k=`${c.id}:${c.draw[x][0]}`; if(!runDone[k] && !runScratch[k]) ahead++; }
         results.push({
           classId:c.id, className:c.name, horse:`${d[1]==="—"?"":d[1]+" "}${d[2]}`,
           pos:d[0], etaMin:Math.max(0,Math.round(etaThis)), ahead,
@@ -626,7 +637,7 @@ function estimateSchedule(){
     const startMin = cursorMin;
 
     let remaining=0;
-    c.draw.forEach(d=>{ if(!runDone[`${c.id}:${d[0]}`]) remaining++; });
+    c.draw.forEach(d=>{ const k=`${c.id}:${d[0]}`; if(!runDone[k] && !runScratch[k]) remaining++; });
     const dur = remaining*paceOf(c);
     cursorMin += dur;
 
@@ -849,10 +860,12 @@ function renderList(){
           const her=RIDER_RE.test(d[3].trim());
           const key=`${c.id}:${d[0]}`;
           const done=!!runDone[key];
-          return `<div class="draw ${her?"her":""}">
+          const scr=!!runScratch[key];
+          return `<div class="draw ${her?"her":""}${scr?" scr":""}">
             <span class="pos">${d[0]}</span>
             <span class="dh">${d[1]==="—"?"":d[1]+" "}${d[2]} <span class="rn">· ${d[3]}</span></span>
-            <button class="mkdone ${done?"on":""}" data-run="${key}">${done?"✓ ran":"ran"}</button>
+            <button class="mkscr ${scr?"on":""}" data-scr="${key}">${scr?"scratched":"scratch"}</button>
+            <button class="mkdone ${done?"on":""}" data-run="${key}"${scr?" disabled":""}>${done?"✓ ran":"ran"}</button>
           </div>`;
         }).join("")}
         <div class="cbtns">
@@ -869,7 +882,7 @@ function renderAll(){ saveState(); renderNext(); renderSchedule(); renderCalib()
 
 /* ---------- EVENTS ---------- */
 document.addEventListener("click",e=>{
-  const t=e.target.closest("[data-toggle],[data-live],[data-done],[data-up],[data-run],[data-sched],[data-calib]");
+  const t=e.target.closest("[data-toggle],[data-live],[data-done],[data-up],[data-run],[data-scr],[data-sched],[data-calib]");
   if(!t) return;
 
   if(t.hasAttribute("data-calib")){
@@ -889,9 +902,18 @@ document.addEventListener("click",e=>{
   }
   if(t.hasAttribute("data-run")){
     const key=t.getAttribute("data-run");
+    if(runScratch[key]) return;      // scratched horses can't be marked as ran
     runDone[key]=!runDone[key];
     // stamp when it was marked so we can measure actual pace; clear on un-mark
     if(runDone[key]) runDoneAt[key]=Date.now(); else delete runDoneAt[key];
+    renderAll(); return;
+  }
+  if(t.hasAttribute("data-scr")){
+    const key=t.getAttribute("data-scr");
+    runScratch[key]=!runScratch[key];
+    if(runScratch[key]){             // scratched: can't also be "ran"
+      delete runDone[key]; delete runDoneAt[key];
+    }
     renderAll(); return;
   }
   if(t.hasAttribute("data-live")){
@@ -939,6 +961,7 @@ $("#reset").addEventListener("click",()=>{
   CLASSES.forEach(c=>{status[c.id]="upcoming"; c._open=false;});
   Object.keys(runDone).forEach(k=>delete runDone[k]);
   Object.keys(runDoneAt).forEach(k=>delete runDoneAt[k]);
+  Object.keys(runScratch).forEach(k=>delete runScratch[k]);
   paceByType={...PACE_DEFAULT};
   liveIdx=null;
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
