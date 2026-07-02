@@ -659,10 +659,10 @@ function measurePace(disc){
     .filter(o=>o.disc===disc && typeof o.t==="number")
     .sort((a,b)=>a.t-b.t);
 
-  if(times.length < 6) return null;                 // too few of THIS discipline
+  if(times.length < 4) return null;                 // need a few of THIS discipline
   const spanMs = times[times.length-1].t - times[0].t;
   const spanMin = spanMs/60000;
-  if(spanMin < 20) return null;                     // marked in one burst — no signal
+  if(spanMin < 4) return null;                       // all marked in one burst — no signal
 
   // subtract one class-gap per class boundary the marks crossed
   const classesTouched = new Set(times.map(o=>o.classId)).size;
@@ -671,7 +671,7 @@ function measurePace(disc){
   const rideMin = spanMin - gapMin;
   const intervals = times.length - 1;
   const perRun = rideMin / intervals;
-  if(perRun < 0.5 || perRun > 15) return null;      // implausible — ignore
+  if(perRun < 0.5 || perRun > 15) return null;      // implausibly fast/slow (e.g. burst-marked) — ignore
 
   return { perRun, runs: times.length, spanMin };
 }
