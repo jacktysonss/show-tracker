@@ -270,7 +270,7 @@
 <script>
 /* Bump this whenever the app changes — shows in the footer so you can confirm
    a fresh copy actually loaded (vs a cached one). */
-const APP_VERSION = "2026-07-02 · build 10";
+const APP_VERSION = "2026-07-02 · build 11";
 
 /* ---------- DATA: classes in running order ----------
    Each class: id (program number), name, and draw list [pos, horseNo, horse, rider]
@@ -720,7 +720,10 @@ function estimateSchedule(){
    Measured per DISCIPLINE so boxing isn't diluted by cutting data (and vice
    versa). Returns {perRun, runs} or null when there isn't enough signal yet. */
 const RUN_MIN_MIN = 0.25;  // shorter interval than this ⇒ bulk/simultaneous taps
-const RUN_MAX_MIN = 8;     // longer than this ⇒ a class change / break, not a run
+// longer than this ⇒ a class change / long break, not a single run. Generous so
+// slow disciplines (cow work fence runs + cattle settle) still count; the median
+// shrugs off the occasional class-gap interval that sneaks under the ceiling.
+const RUN_MAX_MIN = 15;
 function measurePace(disc){
   const times = Object.keys(runDoneAt)
     .filter(k=>runDone[k])
