@@ -231,6 +231,8 @@
   .reset{margin-top:10px;background:none;border:1px solid var(--line);color:#8a7c63;
     font-family:ui-monospace,monospace;font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;
     padding:8px 14px;border-radius:20px;cursor:pointer;}
+  .ver{margin-top:12px;font-family:ui-monospace,monospace;font-size:.58rem;
+    letter-spacing:.1em;color:#b3a68d;}
 </style>
 </head>
 <body>
@@ -259,9 +261,14 @@
   Timing is an estimate — it recalculates from whatever is currently marked live.
   <br>
   <button class="reset" id="reset">Reset the day</button>
+  <div class="ver" id="ver"></div>
 </footer>
 
 <script>
+/* Bump this whenever the app changes — shows in the footer so you can confirm
+   a fresh copy actually loaded (vs a cached one). */
+const APP_VERSION = "2026-07-02 · build 7";
+
 /* ---------- DATA: classes in running order ----------
    Each class: id (program number), name, and draw list [pos, horseNo, horse, rider]
    "her" flag computed from rider name match (Michi / Mitchi Tyson).
@@ -994,6 +1001,7 @@ function tick(){
 }
 setInterval(tick,30000);
 
+$("#ver").textContent = APP_VERSION;
 renderAll(); tick();
 </script>
 </body>
