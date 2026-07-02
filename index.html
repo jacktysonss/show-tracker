@@ -596,9 +596,12 @@ function estimateForHerRides(){
       const etaThis = cursorMin;
       if(!already){ cursorMin += paceOf(c); }
       if(r===c.herIdx && !already){
+        // how many runs before her in this class are still to go
+        let ahead=0;
+        for(let x=0;x<c.herIdx;x++){ if(!runDone[`${c.id}:${c.draw[x][0]}`]) ahead++; }
         results.push({
           classId:c.id, className:c.name, horse:`${d[1]==="—"?"":d[1]+" "}${d[2]}`,
-          pos:d[0], etaMin:Math.max(0,Math.round(etaThis)),
+          pos:d[0], etaMin:Math.max(0,Math.round(etaThis)), ahead,
           isLiveNow:(i===anchorIdx && status[c.id]==="live")
         });
       }
@@ -717,14 +720,26 @@ function renderNext(){
   }
   const n=her[0];
   const rest=her.slice(1);
+  let bigTxt, subTxt;
+  if(n.isLiveNow && n.ahead===0){
+    // everyone before her in the live class is done — she's up
+    bigTxt="UP NOW";
+    subTxt="She's next in the draw — into the arena";
+  } else if(n.isLiveNow){
+    // in the live class with riders still ahead — show the countdown to her
+    bigTxt="~"+fmtETA(n.etaMin);
+    subTxt=`${n.ahead} rider${n.ahead>1?"s":""} before her · ~${clockAt(n.etaMin)}`;
+  } else {
+    bigTxt="~"+fmtETA(n.etaMin);
+    subTxt="est. ride ~"+clockAt(n.etaMin)+"<br>if things run to pace";
+  }
   card.innerHTML=`<div class="next">
     <div class="tag">${n.isLiveNow?"Riding area · in this class now":"Next ride · "+n.classId}</div>
     <div class="cls">${n.classId} — ${n.className}</div>
     <div class="horse"><b>#${n.pos} in the draw</b> · ${n.horse}</div>
     <div class="eta">
-      <div class="big util">${n.isLiveNow?"SOON":"~"+fmtETA(n.etaMin)}</div>
-      <div class="sub">${n.isLiveNow?"She's in the current class — watch the draw order":
-        "est. ride ~"+clockAt(n.etaMin)+"<br>if things run to pace"}</div>
+      <div class="big util">${bigTxt}</div>
+      <div class="sub">${subTxt}</div>
     </div>
     ${rest.length?`<div class="queue">Then: ${rest.map(r=>`${r.classId} (~${fmtETA(r.etaMin)})`).join(" · ")}</div>`:""}
   </div>`;
