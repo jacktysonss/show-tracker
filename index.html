@@ -281,7 +281,7 @@
 <script>
 /* Bump this whenever the app changes — shows in the footer so you can confirm
    a fresh copy actually loaded (vs a cached one). */
-const APP_VERSION = "2026-07-03 · build 12";
+const APP_VERSION = "2026-07-03 · build 13";
 
 /* ---------- DATA: classes in running order ----------
    Each class: id (program number), name, and draw list [pos, horseNo, horse, rider]
@@ -780,7 +780,7 @@ const DAYS = [
    Discipline comes from an explicit `disc` tag if present, else from the name. */
 const DISC_LABEL = {cutting:"Cutting", boxing:"Boxing", cowwork:"Cow work", reining:"Reining"};
 // Seed rates (min per run, wall-clock incl. turnaround). Calibration refines each.
-const PACE_DEFAULT = {cutting:2.5, boxing:1.5, cowwork:2.5, reining:2.5};
+const PACE_DEFAULT = {cutting:2.5, boxing:1.5, cowwork:2.5, reining:3};
 function discOf(c){
   if(c.disc) return c.disc;                       // explicit tag wins
   const n=c.name.toLowerCase();
