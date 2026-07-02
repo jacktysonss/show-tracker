@@ -239,7 +239,7 @@
 <div class="pacenote" id="pacenote"></div>
 
 <div class="controls">
-  <button id="setMin">Per-ride: <b id="minLabel">2.5</b> min</button>
+  <button id="setMin"><span id="minDisc">Cutting</span> run: <b id="minLabel">2.5</b> min</button>
   <button id="setGap">Class gap: <b id="gapLabel">15</b> min</button>
 </div>
 
@@ -496,14 +496,34 @@ const CLASSES = [
   ]},
 ];
 
-/* mark "her" rides */
+/* ---------- DISCIPLINES ----------
+   Different events run at very different speeds (a cutting run is ~2.5 min of
+   work, a boxing run only ~50 sec), so we track pace separately per discipline
+   instead of one blended average. Discipline is read from the class name. */
+const DISC_LABEL = {cutting:"Cutting", boxing:"Boxing", cowwork:"Cow work"};
+// Seed rates (min per run, wall-clock incl. turnaround). Calibration refines
+// each one from real runs of that discipline. Cutting keeps the familiar 2.5.
+const PACE_DEFAULT = {cutting:2.5, boxing:1.5, cowwork:2.5};
+function discOf(c){
+  const n=c.name.toLowerCase();
+  if(n.includes("boxing")) return "boxing";
+  if(n.includes("cow work")) return "cowwork";
+  return "cutting"; // herd work + ranch cutting
+}
+
+/* mark "her" rides + tag discipline */
 CLASSES.forEach(c=>{
   c.herIdx = c.draw.findIndex(d=>RIDER_RE.test(d[3].trim()));
+  c.disc = discOf(c);
 });
+const CLASS_BY_ID = {};
+CLASSES.forEach(c=>{ CLASS_BY_ID[c.id]=c; });
 
 /* ---------- STATE (saved to this device so it survives reloads) ---------- */
 const SAVE_KEY = "michiTracker.v1";
-let MIN_PER_RIDE = 3.5;   // minutes per run inside a class
+// per-discipline minutes per run; refined by calibration for each discipline
+let paceByType = {...PACE_DEFAULT};
+function paceOf(c){ return paceByType[c.disc] ?? PACE_DEFAULT[c.disc] ?? 2.5; }
 let GAP_MIN = 15;         // minutes between classes (drag/settle/setup)
 // status per class: "upcoming" | "live" | "done"
 const status = {};
@@ -519,7 +539,10 @@ CLASSES.forEach((c,i)=>status[c.id]="upcoming");
 function saveState(){
   try{
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      minPerRide:MIN_PER_RIDE, gapMin:GAP_MIN, status, runDone, runDoneAt, liveIdx
+      // paceByType is the new source of truth; minPerRide is kept in sync with
+      // the cutting rate so an older app version can still read this save.
+      paceByType, minPerRide:paceByType.cutting,
+      gapMin:GAP_MIN, status, runDone, runDoneAt, liveIdx
     }));
   }catch(e){/* storage full or blocked — app still works for the session */}
 }
@@ -528,7 +551,15 @@ function loadState(){
     const raw=localStorage.getItem(SAVE_KEY);
     if(!raw) return;
     const s=JSON.parse(raw);
-    if(typeof s.minPerRide==="number") MIN_PER_RIDE=s.minPerRide;
+    // New format: per-discipline pace. Old format: single minPerRide — migrate
+    // it into the cutting rate and seed boxing/cow-work from defaults.
+    if(s.paceByType && typeof s.paceByType==="object"){
+      Object.keys(paceByType).forEach(k=>{
+        if(typeof s.paceByType[k]==="number") paceByType[k]=s.paceByType[k];
+      });
+    } else if(typeof s.minPerRide==="number"){
+      paceByType.cutting = s.minPerRide;
+    }
     if(typeof s.gapMin==="number") GAP_MIN=s.gapMin;
     if(s.status) Object.keys(s.status).forEach(k=>{ if(k in status) status[k]=s.status[k]; });
     if(s.runDone) Object.keys(s.runDone).forEach(k=>{ runDone[k]=s.runDone[k]; });
@@ -563,7 +594,7 @@ function estimateForHerRides(){
       const already = runDone[key];
       // eta at the START of this run
       const etaThis = cursorMin;
-      if(!already){ cursorMin += MIN_PER_RIDE; }
+      if(!already){ cursorMin += paceOf(c); }
       if(r===c.herIdx && !already){
         results.push({
           classId:c.id, className:c.name, horse:`${d[1]==="—"?"":d[1]+" "}${d[2]}`,
@@ -593,11 +624,11 @@ function estimateSchedule(){
 
     let remaining=0;
     c.draw.forEach(d=>{ if(!runDone[`${c.id}:${d[0]}`]) remaining++; });
-    const dur = remaining*MIN_PER_RIDE;
+    const dur = remaining*paceOf(c);
     cursorMin += dur;
 
     rows.push({
-      classId:c.id, className:c.name, startMin, gapBefore, dur, remaining,
+      classId:c.id, className:c.name, startMin, gapBefore, dur, remaining, disc:c.disc,
       hasHer:c.herIdx>=0, herPos: c.herIdx>=0 ? c.draw[c.herIdx][0] : null,
       isAnchor:i===anchorIdx, isLive:status[c.id]==="live"
     });
@@ -617,15 +648,18 @@ function estimateSchedule(){
    Time-per-run = (that span − gap time for class changes) / (runs − 1).
    Because it averages over the whole day, a few late taps barely move it.
 
+   Measured per DISCIPLINE so boxing isn't diluted by cutting data (and vice
+   versa). Only runs from classes of `disc` count toward that discipline's pace.
    Returns {perRun, runs, spanMin} or null when there isn't enough signal yet. */
-function measurePace(){
+function measurePace(disc){
   const times = Object.keys(runDoneAt)
     .filter(k=>runDone[k])
-    .map(k=>({classId:k.split(":")[0], t:runDoneAt[k]}))
-    .filter(o=>typeof o.t==="number")
+    .map(k=>{ const classId=k.split(":")[0]; const c=CLASS_BY_ID[classId];
+              return {classId, disc:c?c.disc:null, t:runDoneAt[k]}; })
+    .filter(o=>o.disc===disc && typeof o.t==="number")
     .sort((a,b)=>a.t-b.t);
 
-  if(times.length < 6) return null;                 // too few to trust
+  if(times.length < 6) return null;                 // too few of THIS discipline
   const spanMs = times[times.length-1].t - times[0].t;
   const spanMin = spanMs/60000;
   if(spanMin < 20) return null;                     // marked in one burst — no signal
@@ -640,6 +674,12 @@ function measurePace(){
   if(perRun < 0.5 || perRun > 15) return null;      // implausible — ignore
 
   return { perRun, runs: times.length, spanMin };
+}
+
+/* the discipline currently in play — live class, else next upcoming */
+function currentDisc(){
+  let idx = (liveIdx!=null) ? liveIdx : CLASSES.findIndex(c=>status[c.id]!=="done");
+  return idx>=0 ? CLASSES[idx].disc : "cutting";
 }
 
 /* ---------- RENDER ---------- */
@@ -698,7 +738,7 @@ function renderSchedule(){
   const body=rows.map((r,idx)=>{
     const gap = idx>0 ? `<div class="sgap">↕ +${GAP_MIN} min between classes</div>` : "";
     const etaTxt = r.startMin<=0 ? (r.isLive?"live now":"now") : "~"+fmtETA(r.startMin);
-    const runTxt = `${r.remaining} run${r.remaining!==1?"s":""} · ~${Math.round(r.dur)} min`;
+    const runTxt = `${DISC_LABEL[r.disc]} · ${r.remaining} run${r.remaining!==1?"s":""} · ~${Math.round(r.dur)} min`;
     return gap + `<div class="srow${r.hasHer?" her":""}${r.isLive?" live":""}">
       <div class="scid">${r.classId}</div>
       <div class="smid">
@@ -724,29 +764,35 @@ function renderSchedule(){
 
 function renderCalib(){
   const el=$("#calib");
-  const m=measurePace();
-  if(!m){ el.innerHTML=""; return; }          // not enough marks yet — stay quiet
+  const disc=currentDisc();                    // calibrate the discipline in play
+  const cur=paceByType[disc];
+  const label=DISC_LABEL[disc];
+  const m=measurePace(disc);
+  if(!m){ el.innerHTML=""; return; }            // not enough marks of this discipline yet
   const obs=Math.round(m.perRun*10)/10;        // one decimal
-  const diff=Math.abs(obs-MIN_PER_RIDE);
+  const diff=Math.abs(obs-cur);
   if(diff<0.3){
     // reality agrees with the estimate — reassure, no action needed
     el.innerHTML=`<div class="calib match">
-      <div class="msg">On pace: actual so far is <b>~${obs} min/run</b> over ${m.runs} runs — your ~${MIN_PER_RIDE} min estimate looks right.</div>
+      <div class="msg">On pace: ${label.toLowerCase()} is running <b>~${obs} min/run</b> over ${m.runs} runs — your ~${cur} min estimate looks right.</div>
     </div>`;
     return;
   }
-  const dir = obs>MIN_PER_RIDE ? "slower" : "faster";
+  const dir = obs>cur ? "slower" : "faster";
   el.innerHTML=`<div class="calib">
-    <div class="msg">Running <b>${dir}</b> than estimated: actual pace is <b>~${obs} min/run</b> over ${m.runs} runs (you're set to ${MIN_PER_RIDE}).</div>
-    <button data-calib="${obs}">Use ${obs}</button>
+    <div class="msg"><b>${label}</b> running <b>${dir}</b> than estimated: actual pace is <b>~${obs} min/run</b> over ${m.runs} runs (set to ${cur}).</div>
+    <button data-calib="${obs}" data-disc="${disc}">Use ${obs}</button>
   </div>`;
 }
 
 function renderPace(){
+  const disc=currentDisc();
+  const cur=paceByType[disc];
   $("#pacenote").innerHTML =
-    `Assuming <b>~${MIN_PER_RIDE} min</b> per run and <b>~${GAP_MIN} min</b> between classes `+
-    `(herd settle · arena drag · setup). Tap a class <b>Live</b> when it actually starts to re-anchor the clock.`;
-  $("#minLabel").textContent=MIN_PER_RIDE;
+    `Assuming <b>~${cur} min</b> per ${DISC_LABEL[disc].toLowerCase()} run and <b>~${GAP_MIN} min</b> between classes `+
+    `(herd settle · arena drag · setup). Each discipline keeps its own pace. Tap a class <b>Live</b> when it starts to re-anchor the clock.`;
+  $("#minDisc").textContent=DISC_LABEL[disc];
+  $("#minLabel").textContent=cur;
   $("#gapLabel").textContent=GAP_MIN;
 }
 
@@ -807,7 +853,8 @@ document.addEventListener("click",e=>{
 
   if(t.hasAttribute("data-calib")){
     const v=parseFloat(t.getAttribute("data-calib"));
-    if(!isNaN(v)) MIN_PER_RIDE=v;   // adopt the measured pace for future estimates
+    const d=t.getAttribute("data-disc")||currentDisc();
+    if(!isNaN(v)) paceByType[d]=v;   // adopt measured pace for THIS discipline
     renderAll(); return;
   }
   if(t.hasAttribute("data-sched")){
@@ -853,11 +900,12 @@ document.addEventListener("click",e=>{
 
 $("#setMin").addEventListener("click",()=>{
   const opts=[1.5,2,2.5,3,3.5,4];
+  const d=currentDisc();          // adjust the discipline currently in play
   // if the value came from calibration it may sit off the preset steps —
   // jump to the next preset above the current value, wrapping around
-  let i=opts.indexOf(MIN_PER_RIDE);
-  if(i<0) i=opts.findIndex(o=>o>MIN_PER_RIDE)-1; // so +1 below lands on that next step
-  MIN_PER_RIDE=opts[(i+1+opts.length)%opts.length];
+  let i=opts.indexOf(paceByType[d]);
+  if(i<0) i=opts.findIndex(o=>o>paceByType[d])-1; // so +1 below lands on that next step
+  paceByType[d]=opts[(i+1+opts.length)%opts.length];
   renderAll();
 });
 $("#setGap").addEventListener("click",()=>{
@@ -870,6 +918,7 @@ $("#reset").addEventListener("click",()=>{
   CLASSES.forEach(c=>{status[c.id]="upcoming"; c._open=false;});
   Object.keys(runDone).forEach(k=>delete runDone[k]);
   Object.keys(runDoneAt).forEach(k=>delete runDoneAt[k]);
+  paceByType={...PACE_DEFAULT};
   liveIdx=null;
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
   renderAll();
