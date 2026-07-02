@@ -643,14 +643,20 @@ function estimateSchedule(){
    gap between consecutive taps (that's noise — you might tick three runs at once,
    or five minutes late). Instead we use only two things that stay reliable no
    matter *when* you tap:
-     • the span from the first marked run to the last marked run, and
-     • the total COUNT of runs done in between.
-   Time-per-run = (that span − gap time for class changes) / (runs − 1).
-   Because it averages over the whole day, a few late taps barely move it.
+   We look at the time between each pair of CONSECUTIVE completions and keep only
+   the plausible single-run gaps. This throws out the two things that used to
+   corrupt the estimate:
+     • bulk/late marking — those taps land ~together, so their interval is near
+       zero and falls below the window, and
+     • the gap between classes — that interval is far larger than a run, so it
+       falls above the window (no gap subtraction needed, so changing GAP_MIN
+       can no longer skew the measurement).
+   The per-run pace is the MEDIAN of what's left, which shrugs off outliers.
 
    Measured per DISCIPLINE so boxing isn't diluted by cutting data (and vice
-   versa). Only runs from classes of `disc` count toward that discipline's pace.
-   Returns {perRun, runs, spanMin} or null when there isn't enough signal yet. */
+   versa). Returns {perRun, runs} or null when there isn't enough signal yet. */
+const RUN_MIN_MIN = 0.25;  // shorter interval than this ⇒ bulk/simultaneous taps
+const RUN_MAX_MIN = 8;     // longer than this ⇒ a class change / break, not a run
 function measurePace(disc){
   const times = Object.keys(runDoneAt)
     .filter(k=>runDone[k])
@@ -660,20 +666,20 @@ function measurePace(disc){
     .sort((a,b)=>a.t-b.t);
 
   if(times.length < 4) return null;                 // need a few of THIS discipline
-  const spanMs = times[times.length-1].t - times[0].t;
-  const spanMin = spanMs/60000;
-  if(spanMin < 4) return null;                       // all marked in one burst — no signal
 
-  // subtract one class-gap per class boundary the marks crossed
-  const classesTouched = new Set(times.map(o=>o.classId)).size;
-  const gapMin = Math.max(0, classesTouched-1) * GAP_MIN;
+  // run-to-run intervals, keeping only plausible single-run durations
+  const deltas=[];
+  for(let i=1;i<times.length;i++){
+    const dMin=(times[i].t - times[i-1].t)/60000;
+    if(dMin>=RUN_MIN_MIN && dMin<=RUN_MAX_MIN) deltas.push(dMin);
+  }
+  if(deltas.length < 3) return null;                // not enough real-time-spread runs
 
-  const rideMin = spanMin - gapMin;
-  const intervals = times.length - 1;
-  const perRun = rideMin / intervals;
-  if(perRun < 0.5 || perRun > 15) return null;      // implausibly fast/slow (e.g. burst-marked) — ignore
+  deltas.sort((a,b)=>a-b);
+  const mid=Math.floor(deltas.length/2);
+  const perRun = deltas.length%2 ? deltas[mid] : (deltas[mid-1]+deltas[mid])/2;
 
-  return { perRun, runs: times.length, spanMin };
+  return { perRun, runs: deltas.length+1 };
 }
 
 /* the discipline currently in play — live class, else next upcoming */
