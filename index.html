@@ -176,6 +176,7 @@
     display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
   .badge{background:var(--herd-soft);color:var(--herd);border-radius:5px;
     padding:1px 6px;font-weight:700;letter-spacing:.02em;}
+  .donetime{color:var(--brand-deep);font-weight:700;letter-spacing:.02em;}
   .status{
     font-family:ui-monospace,monospace;font-size:.6rem;letter-spacing:.14em;
     text-transform:uppercase;padding:4px 8px;border-radius:20px;flex-shrink:0;
@@ -541,6 +542,8 @@ const runDoneAt = {};
 // scratched runs (horse pulled, won't ride): key `${classId}:${pos}` -> bool.
 // Excluded from timing entirely — neither counted as a run to come nor as one ridden.
 const runScratch = {};
+// when each class was marked done: classId -> epoch ms (approx — whenever you tapped)
+const classDoneAt = {};
 // which class index is currently "live" (only one at a time for timing anchor)
 let liveIdx = null;
 CLASSES.forEach((c,i)=>status[c.id]="upcoming");
@@ -551,7 +554,7 @@ function saveState(){
       // paceByType is the new source of truth; minPerRide is kept in sync with
       // the cutting rate so an older app version can still read this save.
       paceByType, minPerRide:paceByType.cutting,
-      gapMin:GAP_MIN, status, runDone, runDoneAt, runScratch, liveIdx
+      gapMin:GAP_MIN, status, runDone, runDoneAt, runScratch, classDoneAt, liveIdx
     }));
   }catch(e){/* storage full or blocked — app still works for the session */}
 }
@@ -574,6 +577,7 @@ function loadState(){
     if(s.runDone) Object.keys(s.runDone).forEach(k=>{ runDone[k]=s.runDone[k]; });
     if(s.runDoneAt) Object.keys(s.runDoneAt).forEach(k=>{ runDoneAt[k]=s.runDoneAt[k]; });
     if(s.runScratch) Object.keys(s.runScratch).forEach(k=>{ runScratch[k]=s.runScratch[k]; });
+    if(s.classDoneAt) Object.keys(s.classDoneAt).forEach(k=>{ classDoneAt[k]=s.classDoneAt[k]; });
     liveIdx = (typeof s.liveIdx==="number") ? s.liveIdx : null;
   }catch(e){/* corrupt save — ignore and start fresh */}
 }
@@ -717,6 +721,14 @@ function clockAt(min){
   const ap=h>=12?"pm":"am"; h=h%12||12;
   return h+":"+String(m).padStart(2,"0")+ap;
 }
+function fmtClockTs(ts){   // format an absolute epoch-ms timestamp as clock time
+  const t=new Date(ts);
+  let h=t.getHours(), m=t.getMinutes();
+  const ap=h>=12?"pm":"am"; h=h%12||12;
+  return h+":"+String(m).padStart(2,"0")+ap;
+}
+// record when a class was marked done, keeping the first stamp if already set
+function stampDone(id){ if(!classDoneAt[id]) classDoneAt[id]=Date.now(); }
 
 function renderNext(){
   const her=estimateForHerRides();
@@ -850,6 +862,7 @@ function renderList(){
             <span>${runs} run${runs>1?"s":""}${c.partial?" (from #"+c.draw[0][0]+")":""}</span>
             ${hasHer?`<span class="badge">MICHI · #${c.draw[c.herIdx][0]}</span>`:""}
             ${hasHer?`<span>${herHorse}</span>`:""}
+            ${isDone&&classDoneAt[c.id]?`<span class="donetime">done ${fmtClockTs(classDoneAt[c.id])}</span>`:""}
           </div>
         </div>
         ${isLive?'<span class="status live">Live</span>':isDone?'<span class="status done">Done</span>':'<span class="status">Upcoming</span>'}
@@ -921,21 +934,23 @@ document.addEventListener("click",e=>{
     if(status[CLASSES[i].id]==="live"){ status[CLASSES[i].id]="upcoming"; liveIdx=null; }
     else {
       // mark all earlier classes done, this one live
-      CLASSES.forEach((c,j)=>{ if(j<i) status[c.id]="done"; });
+      CLASSES.forEach((c,j)=>{ if(j<i){ status[c.id]="done"; stampDone(c.id); } });
       status[CLASSES[i].id]="live"; liveIdx=i;
+      delete classDoneAt[CLASSES[i].id];   // now live, no longer "done"
     }
     CLASSES[i]._open=true;
     renderAll(); return;
   }
   if(t.hasAttribute("data-done")){
     const i=+t.getAttribute("data-done");
-    status[CLASSES[i].id]="done";
+    status[CLASSES[i].id]="done"; stampDone(CLASSES[i].id);
     if(liveIdx===i) liveIdx=null;
     renderAll(); return;
   }
   if(t.hasAttribute("data-up")){
     const i=+t.getAttribute("data-up");
     status[CLASSES[i].id]="upcoming";
+    delete classDoneAt[CLASSES[i].id];     // back to upcoming, drop the done time
     if(liveIdx===i) liveIdx=null;
     renderAll(); return;
   }
@@ -962,6 +977,7 @@ $("#reset").addEventListener("click",()=>{
   Object.keys(runDone).forEach(k=>delete runDone[k]);
   Object.keys(runDoneAt).forEach(k=>delete runDoneAt[k]);
   Object.keys(runScratch).forEach(k=>delete runScratch[k]);
+  Object.keys(classDoneAt).forEach(k=>delete classDoneAt[k]);
   paceByType={...PACE_DEFAULT};
   liveIdx=null;
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
