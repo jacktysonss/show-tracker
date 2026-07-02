@@ -263,13 +263,14 @@
   Timing is an estimate — it recalculates from whatever is currently marked live.
   <br>
   <button class="reset" id="reset">Reset the day</button>
+  <button class="reset" id="clearTimes">Clear finish times</button>
   <div class="ver" id="ver"></div>
 </footer>
 
 <script>
 /* Bump this whenever the app changes — shows in the footer so you can confirm
    a fresh copy actually loaded (vs a cached one). */
-const APP_VERSION = "2026-07-02 · build 9";
+const APP_VERSION = "2026-07-02 · build 10";
 
 /* ---------- DATA: classes in running order ----------
    Each class: id (program number), name, and draw list [pos, horseNo, horse, rider]
@@ -1005,8 +1006,13 @@ document.addEventListener("click",e=>{
     const i=+t.getAttribute("data-live");
     if(status[CLASSES[i].id]==="live"){ status[CLASSES[i].id]="upcoming"; liveIdx=null; }
     else {
-      // mark all earlier classes done, this one live
-      CLASSES.forEach((c,j)=>{ if(j<i){ status[c.id]="done"; stampDone(c.id); } });
+      // the last not-yet-done class before this one is the one that just finished —
+      // stamp only that one (don't touch classes that were already done, and don't
+      // bulk-stamp everything with "now", which would be wrong)
+      let justFinished=-1;
+      for(let j=i-1;j>=0;j--){ if(status[CLASSES[j].id]!=="done"){ justFinished=j; break; } }
+      CLASSES.forEach((c,j)=>{ if(j<i) status[c.id]="done"; }); // earlier classes are done
+      if(justFinished>=0) stampDone(CLASSES[justFinished].id);
       status[CLASSES[i].id]="live"; liveIdx=i;
       delete classDoneAt[CLASSES[i].id];   // now live, no longer "done"
     }
@@ -1053,6 +1059,11 @@ $("#reset").addEventListener("click",()=>{
   paceByType={...PACE_DEFAULT};
   liveIdx=null;
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  renderAll();
+});
+$("#clearTimes").addEventListener("click",()=>{
+  if(!confirm("Clear all class finish times? Live/Done marks and runs are kept.")) return;
+  Object.keys(classDoneAt).forEach(k=>delete classDoneAt[k]);
   renderAll();
 });
 
