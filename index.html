@@ -269,7 +269,7 @@
 <script>
 /* Bump this whenever the app changes — shows in the footer so you can confirm
    a fresh copy actually loaded (vs a cached one). */
-const APP_VERSION = "2026-07-02 · build 8";
+const APP_VERSION = "2026-07-02 · build 9";
 
 /* ---------- DATA: classes in running order ----------
    Each class: id (program number), name, and draw list [pos, horseNo, horse, rider]
@@ -482,12 +482,45 @@ const CLASSES = [
     [11,"223","TJT Tassa N Genes","Nicole George"],
     [12,"234","Willows Treasure","Michi Tyson"],
   ]},
+  {id:"V48", name:"All Age Amateur Ranch Cow Work", draw:[
+    [1,"181","QXH Perfect Harmony","Stephen Kelly"],
+    [2,"232","Whiskey N Beer","Sandra Buckingham"],
+    [3,"132","Dunitallkindachic","Angel Marsh"],
+    [4,"223","TJT Tassa N Genes","Nicole George"],
+    [5,"217","Swipe Right","Pia Steers"],
+    [6,"171","Miss Hollywood Pinup","Alex Harding"],
+    [7,"187","Rhondhu Crackin Ma Cat","Jody Wellington"],
+  ]},
+  {id:"V50", name:"Heritage Snaffle Bit Ranch Cow Work", draw:[
+    [1,"147","Hollywood Ruf Chex","Michelle Ninness"],
+    [2,"190","Quivering Cat","Jaz Everitt"],
+    [3,"103","Absulootly A Playboy","Angel Marsh"],
+    [4,"120","Classic's Queen","Catherine Jefferis"],
+    [5,"119","Chisums Little Freckle","Pia Steers"],
+  ]},
+  {id:"V51", name:"Inter. Horse Limited Ranch Cow Work", draw:[
+    [1,"112","Bobs Dandy Rio","Simone Wood"],
+    [2,"205","Smooth Mooves","Patrick Hopgood"],
+    [3,"190","Quivering Cat","Jaz Everitt"],
+    [4,"570","CPH Chex Out My Brass","Angel Marsh"],
+    [5,"167","Metallic Condor","Stephen Pyman"],
+    [6,"208","Spin Z Metal","Patrick Hopgood"],
+    [7,"204","Sizzlin Blue Cat","Susan Croser"],
+    [8,"111","Blue Smokin Guns","Genine Jackson"],
+    [9,"459","Believen Mecom","Tracy Ralph"],
+    [10,"148","Holy Blue","Donna Buchanan"],
+    [11,"166","MC Watch Me Win","Patrick Hopgood"],
+    [12,"134","Erin Felix Too","Simone Holt"],
+  ]},
   {id:"V52", name:"Inter. Rider Limited Ranch Cow Work", draw:[
+    [1,"459","Believen Mecom","Tracy Ralph"],
+    [2,"196","Senors Dynasty","Mick McGhee"],
+    [3,"118","Chex For Guns","Jules Beveridge"],
     [4,"199","Shine For Nic","Jennifer Duff"],
     [5,"159","Lil Hollywood Chex","Susan Laws"],
     [6,"134","Erin Felix Too","Simone Holt"],
     [7,"232","Jimbo","Roy Wright"],
-  ], partial:true},
+  ]},
   {id:"V53", name:"Inter. Youth Limited Ranch Cow Work", draw:[
     [1,"227","TN Metallic Belle Rey","Hunter Trousdell"],
   ]},
@@ -587,7 +620,10 @@ function loadState(){
     if(s.runDoneAt) Object.keys(s.runDoneAt).forEach(k=>{ runDoneAt[k]=s.runDoneAt[k]; });
     if(s.runScratch) Object.keys(s.runScratch).forEach(k=>{ runScratch[k]=s.runScratch[k]; });
     if(s.classDoneAt) Object.keys(s.classDoneAt).forEach(k=>{ classDoneAt[k]=s.classDoneAt[k]; });
-    liveIdx = (typeof s.liveIdx==="number") ? s.liveIdx : null;
+    // derive liveIdx from status (keyed by class ID) so it survives any change to
+    // the class list order — a stored numeric index would break when classes are added
+    const li = CLASSES.findIndex(c=>status[c.id]==="live");
+    liveIdx = li>=0 ? li : null;
   }catch(e){/* corrupt save — ignore and start fresh */}
 }
 loadState();
