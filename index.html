@@ -44,6 +44,16 @@
   header h1{font-size:1.5rem;font-weight:600;letter-spacing:-.01em;line-height:1;}
   header h1 small{font-size:.8rem;color:var(--line);font-weight:400;letter-spacing:0;}
 
+  /* ---- day switcher ---- */
+  .days{display:flex;gap:6px;margin-top:12px;}
+  .days button{
+    font-family:ui-monospace,monospace;font-size:.66rem;letter-spacing:.08em;
+    text-transform:uppercase;font-weight:700;cursor:pointer;
+    padding:7px 13px;border-radius:9px;border:1.5px solid rgba(245,239,228,.28);
+    background:transparent;color:var(--line);
+  }
+  .days button.on{background:var(--brand);color:#fff;border-color:var(--brand);}
+
   /* ---- next-ride card ---- */
   .next{
     margin:16px 14px 6px;
@@ -241,6 +251,7 @@
 <header>
   <div class="eyebrow">Ride Tracker · Michi Tyson</div>
   <h1>Up Next <small id="hclock"></small></h1>
+  <div class="days" id="days"></div>
 </header>
 
 <div id="nextcard"></div>
@@ -270,7 +281,7 @@
 <script>
 /* Bump this whenever the app changes — shows in the footer so you can confirm
    a fresh copy actually loaded (vs a cached one). */
-const APP_VERSION = "2026-07-02 · build 11";
+const APP_VERSION = "2026-07-03 · build 12";
 
 /* ---------- DATA: classes in running order ----------
    Each class: id (program number), name, and draw list [pos, horseNo, horse, rider]
@@ -278,7 +289,7 @@ const APP_VERSION = "2026-07-02 · build 11";
 ------------------------------------------------------ */
 const RIDER_RE = /^(michi|mitchi)\s+tyson$/i;
 
-const CLASSES = [
+const DAY1_CLASSES = [
   {id:"C1", name:"Non Pro Hackamore Classic Herd Work", draw:[
     [1,"124","Covid Cat","Jordyn Bentley"],
     [2,"155","Justa Dream Beliver","Kaleigh Towner"],
@@ -546,58 +557,287 @@ const CLASSES = [
   ]},
 ];
 
+/* Day 2 — Fri 3 Jul. Disciplines are set by section header (Ranch Reining /
+   ARCHA Rein Work / Boxing / Cow Horse), so each class carries an explicit disc. */
+const DAY2_CLASSES = [
+  // ---- Ranch Reining ----
+  {id:"V56", name:"All Age Open Feature", disc:"reining", draw:[
+    [1,"170","Just Maid Hard","Michelle Garratt"],
+    [2,"107","Bear Whiz Me","Tania Powell"],
+    [3,"101","A Shinin Texas Time","Dan Steers"],
+    [4,"105","Ampleur Hot To The Max","Raelene Gilboy"],
+    [5,"231","Voodoo Melody","Adrienne Thomson"],
+    [6,"232","Whiskey N Beer","Sandra Buckingham"],
+    [7,"233","Whiz A Roy","Angie Wicks"],
+    [8,"132","Dunitallkindachic","Angel Marsh"],
+    [9,"187","Rhondhu Crackin Ma Cat","Jody Wellington"],
+    [10,"181","QXH Perfect Harmony","Stephen Kelly"],
+    [11,"114","Caramello Cat","Dan Steers"],
+  ]},
+  {id:"V57", name:"All Age Youth", disc:"reining", draw:[
+    [1,"194","Salhaven Top Cat","Brydie Smith"],
+    [2,"105","Ampleur Hot To The Max","Sienna Hansen"],
+    [3,"123","Corprate Zippo","Zahra Vandenberg"],
+    [4,"113","Mondure Dun Doin Favours","Katherine Hines"],
+    [5,"569","RQH Rockin Me Steady","Bobbie Anderson"],
+  ]},
+  {id:"V58", name:"Select Amateur", disc:"reining", draw:[
+    [1,"150","GPS Miss Dior","Kathryn Covic"],
+    [2,"172","Ms Inferno Whiz","Andrew Fay"],
+    [3,"116","Catsasmartlilmitch","Neil Green"],
+    [4,"231","Voodoo Melody","Adrienne Thomson"],
+    [5,"232","Whiskey N Beer","Sandra Buckingham"],
+    [6,"181","QXH Perfect Harmony","Stephen Kelly"],
+  ]},
+  {id:"V59", name:"All Age Amateur", disc:"reining", draw:[
+    [1,"132","Dunitallkindachic","Angel Marsh"],
+    [2,"217","Swipe Right","Pia Steers"],
+    [3,"250","Valdemar Under The Influence","Sage Davison"],
+    [4,"171","Miss Hollywood Pinup","Alex Harding"],
+    [5,"187","Rhondhu Crackin Ma Cat","Jody Wellington"],
+    [6,"155","Justa Dream Beliver","Kaleigh Towner"],
+    [7,"223","TJT Tassa N Genes","Nicole George"],
+  ]},
+  {id:"V60", name:"Heritage Snafflebit", disc:"reining", draw:[
+    [1,"235","Wundurra Magicman","Cora Potter"],
+    [2,"174","NPH Sum Ting All Nu","Amber Ralph"],
+    [3,"129","Do Me A Favour","Bridget Connelly"],
+    [4,"110","Blue Mtn Impress Me More","Naomi Lee"],
+    [5,"119","Chisums Little Freckle","Pia Steers"],
+    [6,"112","Bobs Dandy Rio","Simone Wood"],
+    [7,"147","Hollywood Ruf Chex","Michelle Ninness"],
+    [8,"103","Absulootly A Playboy","Sandra Buckingham"],
+    [9,"120","Classic's Queen","Catherine Jefferis"],
+    [10,"176","Playrey Duck","Leigh Cragg"],
+  ]},
+  {id:"V61", name:"Intermediate Horse", disc:"reining", draw:[
+    [1,"193","Ru Simplee Awesome","Samantha Norton"],
+    [2,"190","Quivering Cat","Jaz Everitt"],
+    [3,"158","Lil Hickory Button","Riley Bruggemann"],
+    [4,"153","JTF Daisy May","Sandra Buckingham"],
+    [5,"111","Blue Smokin Guns","Genine Jackson"],
+    [6,"233","Whiz A Roy","Angie Wicks"],
+    [7,"148","Holy Blue","Donna Buchanan"],
+    [8,"166","MC Watch Me Win","Patrick Hopgood"],
+    [9,"176","Playrey Duck","Leigh Cragg"],
+    [10,"570","CP Chex Out My Brass","Angel Marsh"],
+    [11,"205","Smooth Mooves","Patrick Hopgood"],
+    [12,"158","Lil Hickory Button","Riley Bruggemann"],
+    [13,"124","Covid Cat","Jordyn Bentley"],
+    [14,"174","NPH Sum Ting All Nu","Amber Ralph"],
+    [15,"561","Hell Of A Destiny","Angie Wicks"],
+    [16,"156","La Summer Touch","Alissa Balderston"],
+    [17,"186","Reo Park Freckles Kitty","Sage Davison"],
+  ]},
+  {id:"V62", name:"Intermediate Rider", disc:"reining", draw:[
+    [1,"208","Spin Z Metal","Patrick Hopgood"],
+    [2,"193","Ru Simplee Awesome","Samantha Norton"],
+    [3,"219","Talken Boonsmal","Donna Buchanan"],
+    [4,"118","Chex For Guns","Jules Beveridge"],
+    [5,"228","Toms No Fool","Tegan Gold"],
+    [6,"221","Tis Electric","Nikki Hopgood"],
+    [7,"174","NPH Sum Ting All Nu","Amber Ralph"],
+    [8,"180","Nevadas Smoking Gun","Kyla Fay"],
+    [9,"134","Erin Felix Too","Simone Holt"],
+    [10,"185","Remember Chisum","Chris Pretorius"],
+    [11,"167","Metallic Condor","Stephen Pyman"],
+    [12,"177","Proud Lil Bo Duke","Adrienne Ley"],
+    [13,"156","La Summer Touch","Alissa Balderston"],
+    [14,"115","Cashed Up Chex","Lee Saggers"],
+    [15,"459","Believen Mecom","Tracy Ralph"],
+  ]},
+  {id:"V63", name:"Intermediate Youth", disc:"reining", draw:[
+    [1,"151","Imasmartdoc","Ellyse Callaghan"],
+    [2,"109","Bills Two Timing Chex","Monique Mitchell"],
+    [3,"141","Glenlee Comin Spinner","Estella Sonter"],
+    [4,"222","TJT Lil Gunner","Indy Jacob"],
+    [5,"227","TN Metallic Belle Rey","Hunter Trousdell"],
+    [6,"121","Colorfx Heaven N Hell","Tayla Howard"],
+    [7,"217","Swipe Right","Zara Steers"],
+  ]},
+  {id:"V64", name:"Green Horse", disc:"reining", draw:[
+    [1,"117","Check This Out","Jolene King"],
+    [2,"223","TJT Tassa N Genes","Nicole George"],
+    [3,"218","Sympathy For The Devil","Jennifer Thake"],
+    [4,"211","Springtime Blossom","Deb McGhee"],
+    [5,"189","RKB Divas N Diamonds","Genine Jackson"],
+    [6,"161","Lil Joe Flash","Peter Gould"],
+    [7,"139","Givem Double Hell","Stephen Kelly"],
+    [8,"135","FP Dragonfly","Kristina Jensen"],
+  ]},
+  // ---- ARCHA Rein Work ----
+  {id:"C1", name:"Open / Non-Pro Hackamore Classic", disc:"reining", draw:[
+    [1,"124","Covid Cat","Jordyn Bentley"],
+    [2,"155","Justa Dream Beliver","Kaleigh Towner"],
+    [3,"161","Lil Joe Flash","Peter Gould"],
+    [4,"146","Hogans Nic N Spark","Jennifer Duff"],
+    [5,"157","Lady Like Reno","Michi Tyson"],
+    [6,"114","Caramello Cat","Dan Steers"],
+    [7,"560","Chase McRae","Cassie Harrison"],
+    [8,"163","Loaded Smoke N Mirrors","Patrick Hopgood"],
+  ]},
+  {id:"C2", name:"Open & Non Pro Bridle Spectacular", disc:"reining", draw:[
+    [1,"168","Metallic Desires","Kate Kirk"],
+    [2,"101","A Shinin Texas Time","Dan Steers"],
+    [3,"200","Shiny Kitty","Neil Green"],
+    [4,"232","Whiskey N Beer","Sandra Buckingham"],
+    [5,"132","Dunitallkindachic","Dan Steers"],
+  ]},
+  // ---- Boxing ----
+  {id:"C3", name:"Rookie (Limited) Boxing", disc:"boxing", draw:[
+    [1,"134","Erin Felix Too","Simone Holt"],
+    [2,"118","Chex For Guns","Jules Beveridge"],
+    [3,"122","Cookie","Wayne Brokenbrough"],
+    [4,"222","TJT Lil Gunner","Indy Jacob"],
+    [5,"127","Dee Bar Blue Lena","Brooke Newton"],
+    [6,"196","Senors Dynasty","Mick McGhee"],
+    [7,"209","Spins Silver Reyvolver","Alma Morgan"],
+    [8,"117","Check This Out","Jolene King"],
+    [9,"112","Bobs Dandy Rio","Simone Wood"],
+    [10,"586","Peppys Little Man","Makiko Cooper"],
+    [11,"215","Stylish Idol","Vicki Brennan"],
+    [12,"211","Springtime Blossom","Deb McGhee"],
+    [13,"221","Tis Electric","Nikki Hopgood"],
+    [14,"185","Remember Chisum","Chris Pretorius"],
+    [15,"167","Metallic Condor","Stephen Pyman"],
+    [16,"171","Miss Hollywood Pinup","Morgan Harding"],
+    [17,"459","Believen Mecom","Tracy Ralph"],
+  ]},
+  {id:"C4", name:"Non-Pro Limited Boxing", disc:"boxing", draw:[
+    [1,"132","Dunitallkindachic","Angel Marsh"],
+    [2,"215","Stylish Idol","Vicki Brennan"],
+    [3,"586","Peppys Little Man","Makiko Cooper"],
+    [4,"134","Erin Felix Too","Simone Holt"],
+    [5,"172","Ms Inferno Whiz","Andrew Fay"],
+  ]},
+  {id:"C5", name:"Youth Boxing", disc:"boxing", draw:[
+    [1,"119","Chisums Little Freckle","Zara Steers"],
+    [2,"194","Salhaven Top Cat","Brydie Smith"],
+    [3,"217","Swipe Right","Zara Steers"],
+  ]},
+  {id:"C6", name:"Non-Pro Two Handed Boxing", disc:"boxing", draw:[
+    [1,"138","Get N Bucks","Tracey Forrest"],
+    [2,"132","Dunitallkindachic","Angel Marsh"],
+    [3,"181","QXH Perfect Harmony","Stephen Kelly"],
+    [4,"172","Ms Inferno Whiz","Andrew Fay"],
+    [5,"134","Erin Felix Too","Simone Holt"],
+    [6,"148","Holy Blue","Donna Buchanan"],
+    [7,"129","Do Me A Favour","Bridget Connelly"],
+    [8,"103","Absulootly A Playboy","Sandra Buckingham"],
+    [9,"231","Voodoo Melody","Adrienne Thomson"],
+  ]},
+  {id:"C7", name:"Non-Pro Two Handed Box Drive", disc:"boxing", draw:[
+    [1,"219","Talken Boonsmal","Donna Buchanan"],
+    [2,"119","Chisums Little Freckle","Pia Steers"],
+    [3,"181","QXH Perfect Harmony","Stephen Kelly"],
+    [4,"134","Erin Felix Too","Simone Holt"],
+    [5,"129","Do Me A Favour","Bridget Connelly"],
+    [6,"147","Hollywood Ruf Chex","Greg Smith"],
+    [7,"217","Swipe Right","Pia Steers"],
+    [8,"199","Shinin For Nic","Jennifer Duff"],
+    [9,"103","Absulootly A Playboy","Angel Marsh"],
+    [10,"132","Dunitallkindachic","Tracey Forrest"],
+    [11,"138","Get N Bucks","Tracey Forrest"],
+    [12,"172","Ms Inferno Whiz","Andrew Fay"],
+  ]},
+  // ---- Cow Horse ----
+  {id:"C8", name:"Open & Non-Pro Two Handed Cow Horse Classic", disc:"cowwork", draw:[
+    [1,"205","Smooth Mooves","Patrick Hopgood"],
+    [2,"147","Hollywood Ruf Chex","Greg Smith"],
+    [3,"168","Metallic Desires","Kate Kirk"],
+    [4,"252","Roosters Little Catory","Glenn Wyse"],
+    [5,"103","Absulootly A Playboy","Sandra Buckingham"],
+    [6,"166","MC Watch Me Win","Patrick Hopgood"],
+    [7,"560","Chase McRae","Cassie Harrison"],
+    [8,"110","Blue Mtn Impress Me More","Naomi Lee"],
+    [9,"200","Shiny Kitty","Neil Green"],
+    [10,"101","A Shinin Texas Time","Dan Steers"],
+    [11,"199","Shine For Nic","Jennifer Duff"],
+    [12,"157","Lady Like Reno","Michi Tyson"],
+    [13,"119","Chisums Little Freckle","Dan Steers"],
+    [14,"171","Miss Hollywood Pinup","Alex Harding"],
+    [15,"219","Talken Boonsmal","Donna Buchanan"],
+    [16,"163","Loaded Smoke N Mirrors","Patrick Hopgood"],
+    [17,"124","Covid Cat","Jordyn Bentley"],
+    [18,"148","Holy Blue","Donna Buchanan"],
+    [19,"116","Catsasmartlilmitch","Neil Green"],
+    [20,"217","Swipe Right","Dan Steers"],
+    [21,"208","Spin Z Metal","Patrick Hopgood"],
+    [22,"181","QXH Perfect Harmony","Stephen Kelly"],
+    [23,"107","Bear Whiz Me","Tania Powell"],
+    [24,"214","Stepping In Ashes","Matthew Clifford"],
+  ]},
+];
+
+const DAYS = [
+  {id:"day1", label:"Day 1", classes:DAY1_CLASSES},
+  {id:"day2", label:"Day 2 · Fri", classes:DAY2_CLASSES},
+];
+
 /* ---------- DISCIPLINES ----------
    Different events run at very different speeds (a cutting run is ~2.5 min of
-   work, a boxing run only ~50 sec), so we track pace separately per discipline
-   instead of one blended average. Discipline is read from the class name. */
-const DISC_LABEL = {cutting:"Cutting", boxing:"Boxing", cowwork:"Cow work"};
-// Seed rates (min per run, wall-clock incl. turnaround). Calibration refines
-// each one from real runs of that discipline. Cutting keeps the familiar 2.5.
-const PACE_DEFAULT = {cutting:2.5, boxing:1.5, cowwork:2.5};
+   work, a boxing run only ~50 sec), so we track pace separately per discipline.
+   Discipline comes from an explicit `disc` tag if present, else from the name. */
+const DISC_LABEL = {cutting:"Cutting", boxing:"Boxing", cowwork:"Cow work", reining:"Reining"};
+// Seed rates (min per run, wall-clock incl. turnaround). Calibration refines each.
+const PACE_DEFAULT = {cutting:2.5, boxing:1.5, cowwork:2.5, reining:2.5};
 function discOf(c){
+  if(c.disc) return c.disc;                       // explicit tag wins
   const n=c.name.toLowerCase();
   if(n.includes("boxing")) return "boxing";
-  if(n.includes("cow work")) return "cowwork";
+  if(n.includes("cow work")||n.includes("cow horse")) return "cowwork";
+  if(n.includes("reining")||n.includes("rein work")) return "reining";
   return "cutting"; // herd work + ranch cutting
 }
 
-/* mark "her" rides + tag discipline */
-CLASSES.forEach(c=>{
+/* mark "her" rides + tag discipline for every class across all days */
+DAYS.forEach(day=>day.classes.forEach(c=>{
   c.herIdx = c.draw.findIndex(d=>RIDER_RE.test(d[3].trim()));
   c.disc = discOf(c);
-});
-const CLASS_BY_ID = {};
-CLASSES.forEach(c=>{ CLASS_BY_ID[c.id]=c; });
+}));
 
 /* ---------- STATE (saved to this device so it survives reloads) ---------- */
 const SAVE_KEY = "michiTracker.v1";
-// per-discipline minutes per run; refined by calibration for each discipline
+// per-discipline minutes per run; refined by calibration for each discipline.
+// Shared across days (a boxing run takes ~the same time whatever the day).
 let paceByType = {...PACE_DEFAULT};
 function paceOf(c){ return paceByType[c.disc] ?? PACE_DEFAULT[c.disc] ?? 2.5; }
 let GAP_MIN = 15;         // minutes between classes (drag/settle/setup)
-// status per class: "upcoming" | "live" | "done"
-const status = {};
-// per-run done flags: key `${classId}:${pos}` -> bool
-const runDone = {};
-// timestamp (ms) each run was marked done: key `${classId}:${pos}` -> epoch ms.
-// Used to measure the *actual* pace and calibrate the per-ride estimate.
-const runDoneAt = {};
-// scratched runs (horse pulled, won't ride): key `${classId}:${pos}` -> bool.
-// Excluded from timing entirely — neither counted as a run to come nor as one ridden.
-const runScratch = {};
-// when each class was marked done: classId -> epoch ms (approx — whenever you tapped)
-const classDoneAt = {};
-// which class index is currently "live" (only one at a time for timing anchor)
-let liveIdx = null;
-CLASSES.forEach((c,i)=>status[c.id]="upcoming");
+
+// Per-day state. Class IDs repeat across days (there's a C1 each day), so each
+// day keeps its own marks. status: "upcoming"|"live"|"done"; runDone/runDoneAt/
+// runScratch keyed `${classId}:${pos}`; classDoneAt keyed classId.
+const dayState = {};
+DAYS.forEach(d=>{
+  const st={status:{}, runDone:{}, runDoneAt:{}, runScratch:{}, classDoneAt:{}};
+  d.classes.forEach(c=>st.status[c.id]="upcoming");
+  dayState[d.id]=st;
+});
+
+// live bindings for the currently-selected day (re-pointed by selectDay)
+let currentDay = DAYS[DAYS.length-1].id;   // default to the latest day
+let CLASSES, CLASS_BY_ID, status, runDone, runDoneAt, runScratch, classDoneAt, liveIdx=null;
+function selectDay(id){
+  if(!dayState[id]) id=DAYS[0].id;
+  currentDay=id;
+  CLASSES = DAYS.find(d=>d.id===id).classes;
+  const st=dayState[id];
+  status=st.status; runDone=st.runDone; runDoneAt=st.runDoneAt; runScratch=st.runScratch; classDoneAt=st.classDoneAt;
+  CLASS_BY_ID={}; CLASSES.forEach(c=>CLASS_BY_ID[c.id]=c);
+  const li=CLASSES.findIndex(c=>status[c.id]==="live"); // derive; never trust a stored index
+  liveIdx = li>=0 ? li : null;
+}
 
 function saveState(){
   try{
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      // paceByType is the new source of truth; minPerRide is kept in sync with
-      // the cutting rate so an older app version can still read this save.
-      paceByType, minPerRide:paceByType.cutting,
-      gapMin:GAP_MIN, status, runDone, runDoneAt, runScratch, classDoneAt, liveIdx
+      version:2, currentDay, gapMin:GAP_MIN,
+      paceByType, minPerRide:paceByType.cutting,   // legacy mirror for old versions
+      days: Object.fromEntries(DAYS.map(d=>{
+        const st=dayState[d.id];
+        return [d.id,{status:st.status, runDone:st.runDone, runDoneAt:st.runDoneAt,
+                      runScratch:st.runScratch, classDoneAt:st.classDoneAt}];
+      }))
     }));
   }catch(e){/* storage full or blocked — app still works for the session */}
 }
@@ -606,28 +846,28 @@ function loadState(){
     const raw=localStorage.getItem(SAVE_KEY);
     if(!raw) return;
     const s=JSON.parse(raw);
-    // New format: per-discipline pace. Old format: single minPerRide — migrate
-    // it into the cutting rate and seed boxing/cow-work from defaults.
     if(s.paceByType && typeof s.paceByType==="object"){
-      Object.keys(paceByType).forEach(k=>{
-        if(typeof s.paceByType[k]==="number") paceByType[k]=s.paceByType[k];
-      });
-    } else if(typeof s.minPerRide==="number"){
-      paceByType.cutting = s.minPerRide;
-    }
+      Object.keys(paceByType).forEach(k=>{ if(typeof s.paceByType[k]==="number") paceByType[k]=s.paceByType[k]; });
+    } else if(typeof s.minPerRide==="number"){ paceByType.cutting=s.minPerRide; }
     if(typeof s.gapMin==="number") GAP_MIN=s.gapMin;
-    if(s.status) Object.keys(s.status).forEach(k=>{ if(k in status) status[k]=s.status[k]; });
-    if(s.runDone) Object.keys(s.runDone).forEach(k=>{ runDone[k]=s.runDone[k]; });
-    if(s.runDoneAt) Object.keys(s.runDoneAt).forEach(k=>{ runDoneAt[k]=s.runDoneAt[k]; });
-    if(s.runScratch) Object.keys(s.runScratch).forEach(k=>{ runScratch[k]=s.runScratch[k]; });
-    if(s.classDoneAt) Object.keys(s.classDoneAt).forEach(k=>{ classDoneAt[k]=s.classDoneAt[k]; });
-    // derive liveIdx from status (keyed by class ID) so it survives any change to
-    // the class list order — a stored numeric index would break when classes are added
-    const li = CLASSES.findIndex(c=>status[c.id]==="live");
-    liveIdx = li>=0 ? li : null;
+
+    const applyDay=(st,src)=>{
+      if(!src) return;
+      if(src.status) Object.keys(src.status).forEach(k=>{ if(k in st.status) st.status[k]=src.status[k]; });
+      ["runDone","runDoneAt","runScratch","classDoneAt"].forEach(key=>{
+        if(src[key]) Object.keys(src[key]).forEach(k=>{ st[key][k]=src[key][k]; });
+      });
+    };
+    if(s.days){                       // v2 multi-day format
+      DAYS.forEach(d=>applyDay(dayState[d.id], s.days[d.id]));
+      if(s.currentDay && dayState[s.currentDay]) currentDay=s.currentDay;
+    } else {                          // v1 flat format -> migrate old data into Day 1
+      applyDay(dayState["day1"], s);
+    }
   }catch(e){/* corrupt save — ignore and start fresh */}
 }
 loadState();
+selectDay(currentDay);
 
 /* ---------- TIMING MODEL ----------
    Anchor = the live class (if any) starting "now"; otherwise the first upcoming
@@ -954,13 +1194,23 @@ function renderList(){
   });
 }
 
-function renderAll(){ saveState(); renderNext(); renderSchedule(); renderCalib(); renderPace(); renderList(); }
+function renderDays(){
+  $("#days").innerHTML = DAYS.map(d=>
+    `<button class="${d.id===currentDay?"on":""}" data-day="${d.id}">${d.label}</button>`
+  ).join("");
+}
+function renderAll(){ saveState(); renderDays(); renderNext(); renderSchedule(); renderCalib(); renderPace(); renderList(); }
 
 /* ---------- EVENTS ---------- */
 document.addEventListener("click",e=>{
-  const t=e.target.closest("[data-finish],[data-toggle],[data-live],[data-done],[data-up],[data-run],[data-scr],[data-sched],[data-calib]");
+  const t=e.target.closest("[data-day],[data-finish],[data-toggle],[data-live],[data-done],[data-up],[data-run],[data-scr],[data-sched],[data-calib]");
   if(!t) return;
 
+  if(t.hasAttribute("data-day")){
+    const id=t.getAttribute("data-day");
+    if(id!==currentDay){ selectDay(id); renderAll(); }
+    return;
+  }
   if(t.hasAttribute("data-finish")){
     const id=t.getAttribute("data-finish");
     const cur=classDoneAt[id]?fmtClockTs(classDoneAt[id]):"";
@@ -1053,15 +1303,12 @@ $("#setGap").addEventListener("click",()=>{
   renderAll();
 });
 $("#reset").addEventListener("click",()=>{
-  if(!confirm("Reset the whole day? This clears every Live/Done mark.")) return;
+  const label=DAYS.find(d=>d.id===currentDay).label;
+  if(!confirm(`Reset ${label}? This clears every Live/Done mark for this day only.`)) return;
+  // clear the current day's marks only — the other day is untouched
   CLASSES.forEach(c=>{status[c.id]="upcoming"; c._open=false;});
-  Object.keys(runDone).forEach(k=>delete runDone[k]);
-  Object.keys(runDoneAt).forEach(k=>delete runDoneAt[k]);
-  Object.keys(runScratch).forEach(k=>delete runScratch[k]);
-  Object.keys(classDoneAt).forEach(k=>delete classDoneAt[k]);
-  paceByType={...PACE_DEFAULT};
+  [runDone, runDoneAt, runScratch, classDoneAt].forEach(o=>Object.keys(o).forEach(k=>delete o[k]));
   liveIdx=null;
-  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
   renderAll();
 });
 $("#clearTimes").addEventListener("click",()=>{
