@@ -281,7 +281,7 @@
 <script>
 /* Bump this whenever the app changes — shows in the footer so you can confirm
    a fresh copy actually loaded (vs a cached one). */
-const APP_VERSION = "2026-07-03 · build 13";
+const APP_VERSION = "2026-07-03 · build 14";
 
 /* ---------- DATA: classes in running order ----------
    Each class: id (program number), name, and draw list [pos, horseNo, horse, rider]
@@ -941,52 +941,39 @@ function estimateSchedule(){
 }
 
 /* ---------- CALIBRATION ----------
-   Measure the ACTUAL pace from the marks and compare to the current estimate.
+   Measure ACTUAL pace at the CLASS level, matching how the day is really run:
+   you mark whole classes done (or set the next one live) — you don't tick every
+   run live. For a discipline, take the finish-time stamps of its completed
+   classes, anchor on the earliest, and divide the elapsed time (minus class
+   gaps) by the runs completed after that anchor:
 
-   The trick for being robust to lazy / batched marking: we do NOT look at the
-   gap between consecutive taps (that's noise — you might tick three runs at once,
-   or five minutes late). Instead we use only two things that stay reliable no
-   matter *when* you tap:
-   We look at the time between each pair of CONSECUTIVE completions and keep only
-   the plausible single-run gaps. This throws out the two things that used to
-   corrupt the estimate:
-     • bulk/late marking — those taps land ~together, so their interval is near
-       zero and falls below the window, and
-     • the gap between classes — that interval is far larger than a run, so it
-       falls above the window (no gap subtraction needed, so changing GAP_MIN
-       can no longer skew the measurement).
-   The per-run pace is the MEDIAN of what's left, which shrugs off outliers.
+       per-run = (lastClassEnd - firstClassEnd - gaps) / runs-after-the-first
 
-   Measured per DISCIPLINE so boxing isn't diluted by cutting data (and vice
-   versa). Returns {perRun, runs} or null when there isn't enough signal yet. */
-const RUN_MIN_MIN = 0.25;  // shorter interval than this ⇒ bulk/simultaneous taps
-// longer than this ⇒ a class change / long break, not a single run. Generous so
-// slow disciplines (cow work fence runs + cattle settle) still count; the median
-// shrugs off the occasional class-gap interval that sneaks under the ceiling.
-const RUN_MAX_MIN = 15;
+   Robust to *when* you tapped: it uses one stamp per class (recorded once,
+   naturally spread across the day), never per-run tap times — so late or bulk
+   marking of individual runs can't corrupt it. Measured per discipline so e.g.
+   boxing isn't diluted by reining. The first completed class is the anchor and
+   its own runs aren't counted (we don't know when it started); every later
+   completed class contributes. Returns {perRun, runs, classes} or null. */
 function measurePace(disc){
-  const times = Object.keys(runDoneAt)
-    .filter(k=>runDone[k])
-    .map(k=>{ const classId=k.split(":")[0]; const c=CLASS_BY_ID[classId];
-              return {classId, disc:c?c.disc:null, t:runDoneAt[k]}; })
-    .filter(o=>o.disc===disc && typeof o.t==="number")
-    .sort((a,b)=>a.t-b.t);
+  const done = CLASSES
+    .filter(c=>c.disc===disc && status[c.id]==="done" && classDoneAt[c.id]!=null)
+    .sort((a,b)=>classDoneAt[a.id]-classDoneAt[b.id]);
+  if(done.length < 2) return null;                  // need two class-ends to bound a span
 
-  if(times.length < 4) return null;                 // need a few of THIS discipline
+  const spanMin = (classDoneAt[done[done.length-1].id] - classDoneAt[done[0].id])/60000;
 
-  // run-to-run intervals, keeping only plausible single-run durations
-  const deltas=[];
-  for(let i=1;i<times.length;i++){
-    const dMin=(times[i].t - times[i-1].t)/60000;
-    if(dMin>=RUN_MIN_MIN && dMin<=RUN_MAX_MIN) deltas.push(dMin);
+  // runs that ran within the span = every class after the anchor (skip scratches)
+  let runs=0;
+  for(let i=1;i<done.length;i++){
+    done[i].draw.forEach(d=>{ if(!runScratch[`${done[i].id}:${d[0]}`]) runs++; });
   }
-  if(deltas.length < 3) return null;                // not enough real-time-spread runs
+  const rideMin = spanMin - (done.length-1)*GAP_MIN; // one class gap per boundary
+  if(runs<3 || rideMin<=0) return null;             // too little to be meaningful
 
-  deltas.sort((a,b)=>a-b);
-  const mid=Math.floor(deltas.length/2);
-  const perRun = deltas.length%2 ? deltas[mid] : (deltas[mid-1]+deltas[mid])/2;
-
-  return { perRun, runs: deltas.length+1 };
+  const perRun = rideMin/runs;
+  if(perRun<0.3 || perRun>20) return null;          // implausible — ignore
+  return { perRun, runs, classes:done.length };
 }
 
 /* the discipline currently in play — live class, else next upcoming */
