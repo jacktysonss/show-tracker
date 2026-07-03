@@ -37,6 +37,23 @@ jobs:
           # Publish the repository root (contains index.html)
           path: "."
 
+      # GitHub Pages' publish step occasionally returns a transient
+      # "Deployment failed, try again later." First attempt is allowed to fail
+      # so a second attempt can recover it automatically.
       - name: Deploy to GitHub Pages
         id: deployment
+        continue-on-error: true
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 600000
+
+      - name: Wait before retry
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 20
+
+      - name: Deploy to GitHub Pages (retry)
+        if: steps.deployment.outcome == 'failure'
+        id: deployment_retry
+        uses: actions/deploy-pages@v4
+        with:
+          timeout: 600000

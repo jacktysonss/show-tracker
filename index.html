@@ -140,6 +140,10 @@
 
   .pacenote{margin:6px 16px 2px;font-size:.74rem;color:#6b5d47;line-height:1.4;}
   .pacenote b{color:var(--brand-deep);}
+  .daystart{margin:2px 16px 2px;font-family:ui-monospace,monospace;font-size:.66rem;
+    letter-spacing:.04em;color:#8a7c63;cursor:pointer;}
+  .daystart b{color:var(--brand-deep);text-decoration:underline;text-decoration-style:dotted;
+    text-underline-offset:2px;}
 
   /* ---- calibration chip ---- */
   .calib{
@@ -265,6 +269,8 @@
   <button id="setGap">Class gap: <b id="gapLabel">15</b> min</button>
 </div>
 
+<div class="daystart" id="daystart"></div>
+
 <div id="calib"></div>
 
 <div class="list" id="list"></div>
@@ -281,7 +287,7 @@
 <script>
 /* Bump this whenever the app changes — shows in the footer so you can confirm
    a fresh copy actually loaded (vs a cached one). */
-const APP_VERSION = "2026-07-03 · build 14";
+const APP_VERSION = "2026-07-03 · build 15";
 
 /* ---------- DATA: classes in running order ----------
    Each class: id (program number), name, and draw list [pos, horseNo, horse, rider]
@@ -809,7 +815,9 @@ let GAP_MIN = 15;         // minutes between classes (drag/settle/setup)
 // runScratch keyed `${classId}:${pos}`; classDoneAt keyed classId.
 const dayState = {};
 DAYS.forEach(d=>{
-  const st={status:{}, runDone:{}, runDoneAt:{}, runScratch:{}, classDoneAt:{}};
+  // startMin = the day's first-event time as minutes past midnight (default 7:00am),
+  // used as the calibration anchor so the first class's runs count too.
+  const st={status:{}, runDone:{}, runDoneAt:{}, runScratch:{}, classDoneAt:{}, startMin:420};
   d.classes.forEach(c=>st.status[c.id]="upcoming");
   dayState[d.id]=st;
 });
@@ -836,7 +844,7 @@ function saveState(){
       days: Object.fromEntries(DAYS.map(d=>{
         const st=dayState[d.id];
         return [d.id,{status:st.status, runDone:st.runDone, runDoneAt:st.runDoneAt,
-                      runScratch:st.runScratch, classDoneAt:st.classDoneAt}];
+                      runScratch:st.runScratch, classDoneAt:st.classDoneAt, startMin:st.startMin}];
       }))
     }));
   }catch(e){/* storage full or blocked — app still works for the session */}
@@ -857,6 +865,7 @@ function loadState(){
       ["runDone","runDoneAt","runScratch","classDoneAt"].forEach(key=>{
         if(src[key]) Object.keys(src[key]).forEach(k=>{ st[key][k]=src[key][k]; });
       });
+      if(typeof src.startMin==="number") st.startMin=src.startMin;
     };
     if(s.days){                       // v2 multi-day format
       DAYS.forEach(d=>applyDay(dayState[d.id], s.days[d.id]));
@@ -953,27 +962,47 @@ function estimateSchedule(){
    naturally spread across the day), never per-run tap times — so late or bulk
    marking of individual runs can't corrupt it. Measured per discipline so e.g.
    boxing isn't diluted by reining. The first completed class is the anchor and
-   its own runs aren't counted (we don't know when it started); every later
-   completed class contributes. Returns {perRun, runs, classes} or null. */
+   every completed class contributes when we have a start anchor. Returns
+   {perRun, runs, classes} or null. */
+function dayStartMin(){ const st=dayState[currentDay]; return (st && typeof st.startMin==="number") ? st.startMin : 420; }
+function dayStartTs(refTs){ // the day's start time (e.g. 7am) on the date of refTs
+  const d=new Date(refTs!=null?refTs:Date.now()); d.setHours(0,0,0,0);
+  return d.getTime() + dayStartMin()*60000;
+}
 function measurePace(disc){
-  const done = CLASSES
-    .filter(c=>c.disc===disc && status[c.id]==="done" && classDoneAt[c.id]!=null)
-    .sort((a,b)=>classDoneAt[a.id]-classDoneAt[b.id]);
-  if(done.length < 2) return null;                  // need two class-ends to bound a span
+  // completed, finish-stamped classes of this discipline, in running order
+  const done = CLASSES.map((c,idx)=>({c,idx}))
+    .filter(o=>o.c.disc===disc && status[o.c.id]==="done" && classDoneAt[o.c.id]!=null)
+    .sort((a,b)=>a.idx-b.idx);
+  if(done.length < 1) return null;
 
-  const spanMin = (classDoneAt[done[done.length-1].id] - classDoneAt[done[0].id])/60000;
+  const first=done[0], lastEnd=classDoneAt[done[done.length-1].c.id];
+  const runsIn=o=>{ let n=0; o.c.draw.forEach(d=>{ if(!runScratch[`${o.c.id}:${d[0]}`]) n++; }); return n; };
 
-  // runs that ran within the span = every class after the anchor (skip scratches)
-  let runs=0;
-  for(let i=1;i<done.length;i++){
-    done[i].draw.forEach(d=>{ if(!runScratch[`${done[i].id}:${d[0]}`]) runs++; });
+  // Anchor the FIRST class on a known start: the day start (7am) if it's the very
+  // first class of the day, else the finish time of the class right before it.
+  let anchor=null, gapBeforeFirst=0;
+  if(first.idx===0){ anchor=dayStartTs(classDoneAt[first.c.id]); gapBeforeFirst=0; }
+  else {
+    const prev=CLASSES[first.idx-1];
+    if(status[prev.id]==="done" && classDoneAt[prev.id]!=null){ anchor=classDoneAt[prev.id]; gapBeforeFirst=1; }
   }
-  const rideMin = spanMin - (done.length-1)*GAP_MIN; // one class gap per boundary
-  if(runs<3 || rideMin<=0) return null;             // too little to be meaningful
 
-  const perRun = rideMin/runs;
-  if(perRun<0.3 || perRun>20) return null;          // implausible — ignore
-  return { perRun, runs, classes:done.length };
+  let perRun=null, usedRuns=0;
+  if(anchor!=null && lastEnd>anchor){                 // preferred: every done class counts
+    const spanMin=(lastEnd-anchor)/60000;
+    usedRuns=done.reduce((s,o)=>s+runsIn(o),0);
+    const rideMin=spanMin-(done.length-1+gapBeforeFirst)*GAP_MIN;
+    if(usedRuns>=3 && rideMin>0) perRun=rideMin/usedRuns;
+  }
+  if(perRun==null && done.length>=2){                 // fallback: no anchor -> skip first class
+    const spanMin=(lastEnd-classDoneAt[first.c.id])/60000;
+    usedRuns=done.slice(1).reduce((s,o)=>s+runsIn(o),0);
+    const rideMin=spanMin-(done.length-1)*GAP_MIN;
+    if(usedRuns>=3 && rideMin>0) perRun=rideMin/usedRuns;
+  }
+  if(perRun==null || perRun<0.3 || perRun>20) return null;
+  return { perRun, runs:usedRuns, classes:done.length };
 }
 
 /* the discipline currently in play — live class, else next upcoming */
@@ -1000,6 +1029,11 @@ function clockAt(min){
 function fmtClockTs(ts){   // format an absolute epoch-ms timestamp as clock time
   const t=new Date(ts);
   let h=t.getHours(), m=t.getMinutes();
+  const ap=h>=12?"pm":"am"; h=h%12||12;
+  return h+":"+String(m).padStart(2,"0")+ap;
+}
+function fmtMinOfDay(min){ // format minutes-past-midnight as clock time
+  let h=Math.floor(min/60), m=min%60;
   const ap=h>=12?"pm":"am"; h=h%12||12;
   return h+":"+String(m).padStart(2,"0")+ap;
 }
@@ -1186,16 +1220,29 @@ function renderDays(){
     `<button class="${d.id===currentDay?"on":""}" data-day="${d.id}">${d.label}</button>`
   ).join("");
 }
-function renderAll(){ saveState(); renderDays(); renderNext(); renderSchedule(); renderCalib(); renderPace(); renderList(); }
+function renderDayStart(){
+  $("#daystart").innerHTML = `Day starts <b data-start="1">${fmtMinOfDay(dayStartMin())}</b> — anchors the pace estimate`;
+}
+function renderAll(){ saveState(); renderDays(); renderNext(); renderSchedule(); renderCalib(); renderDayStart(); renderPace(); renderList(); }
 
 /* ---------- EVENTS ---------- */
 document.addEventListener("click",e=>{
-  const t=e.target.closest("[data-day],[data-finish],[data-toggle],[data-live],[data-done],[data-up],[data-run],[data-scr],[data-sched],[data-calib]");
+  const t=e.target.closest("[data-day],[data-start],[data-finish],[data-toggle],[data-live],[data-done],[data-up],[data-run],[data-scr],[data-sched],[data-calib]");
   if(!t) return;
 
   if(t.hasAttribute("data-day")){
     const id=t.getAttribute("data-day");
     if(id!==currentDay){ selectDay(id); renderAll(); }
+    return;
+  }
+  if(t.hasAttribute("data-start")){
+    const ans=prompt("Day start time (when the first event began, e.g. 7:00am or 07:00):", fmtMinOfDay(dayStartMin()));
+    if(ans!==null){
+      const s=ans.trim();
+      const ts=parseTimeInput(s);
+      if(ts!=null){ const d=new Date(ts); dayState[currentDay].startMin=d.getHours()*60+d.getMinutes(); renderAll(); }
+      else if(s!=="") alert("Couldn't read that — try like 7:00am or 07:00.");
+    }
     return;
   }
   if(t.hasAttribute("data-finish")){
